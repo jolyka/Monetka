@@ -47,15 +47,23 @@ type Snapshot = {
     expense_categories: ExpenseCategory[];
 };
 
+type DraftLine = { label: string; value: string };
+type DraftSubmit = {
+    action: string;
+    fields: Record<string, string | number>;
+};
 type Draft = {
     type: string;
-    amount: number;
-    account: string;
-    account_id: number | null;
-    category: string;
-    category_id: number | null;
-    date: string;
-    description: string;
+    amount?: number;
+    account?: string;
+    account_id?: number | null;
+    category?: string;
+    category_id?: number | null;
+    date?: string;
+    description?: string;
+    lines?: DraftLine[];
+    submit?: DraftSubmit | null;
+    blocked?: string | null;
 };
 
 type ChatMessage = {
@@ -101,7 +109,7 @@ defineOptions({
 
 const introMessage: ChatMessage = {
     role: 'assistant',
-    text: `Смотрю только бюджет «${snapshot.workspace_name}» за ${snapshot.month_label}. Цифры считает сервер. Я не создаю операции и не меняю остатки.`,
+    text: `Смотрю только бюджет «${snapshot.workspace_name}» за ${snapshot.month_label}. Цифры считает сервер. Операция, категория, счёт, цель, долг, лимит или регулярный платёж попадут в бюджет только после кнопки «Записать».`,
 };
 const messages = ref<ChatMessage[]>(
     activeMessages.length > 0 ? [...activeMessages] : [introMessage],
@@ -114,8 +122,9 @@ const error = ref('');
 const loadingConversation = ref(false);
 const prompts = [
     'Куда ушли деньги?',
-    'Сколько ещё можно на лимит?',
     'кофе 350 с карты',
+    'цель отпуск 150000',
+    'лимит на кафе 5000',
 ];
 
 function formatAmount(minor: number): string {
@@ -355,24 +364,68 @@ function discardDraft(index: number): void {
                                 Черновик
                             </p>
                             <dl class="grid grid-cols-2 gap-x-4 gap-y-1.5">
-                                <dt class="text-muted-foreground">Тип</dt>
-                                <dd>{{ message.draft.type }}</dd>
-                                <dt class="text-muted-foreground">Сумма</dt>
-                                <dd class="font-medium">
-                                    {{ formatAmount(message.draft.amount) }}
-                                </dd>
-                                <dt class="text-muted-foreground">Счёт</dt>
-                                <dd>{{ message.draft.account }}</dd>
-                                <dt class="text-muted-foreground">Категория</dt>
-                                <dd>{{ message.draft.category }}</dd>
-                                <dt class="text-muted-foreground">Дата</dt>
-                                <dd>{{ message.draft.date }}</dd>
-                                <dt class="text-muted-foreground">Описание</dt>
-                                <dd>{{ message.draft.description }}</dd>
+                                <template v-if="message.draft.lines?.length">
+                                    <template
+                                        v-for="(line, lineIndex) in message.draft
+                                            .lines"
+                                        :key="`${index}-${lineIndex}`"
+                                    >
+                                        <dt class="text-muted-foreground">
+                                            {{ line.label }}
+                                        </dt>
+                                        <dd>{{ line.value }}</dd>
+                                    </template>
+                                </template>
+                                <template v-else>
+                                    <dt class="text-muted-foreground">Тип</dt>
+                                    <dd>{{ message.draft.type }}</dd>
+                                    <dt class="text-muted-foreground">Сумма</dt>
+                                    <dd class="font-medium">
+                                        {{
+                                            formatAmount(message.draft.amount ?? 0)
+                                        }}
+                                    </dd>
+                                    <dt class="text-muted-foreground">Счёт</dt>
+                                    <dd>{{ message.draft.account }}</dd>
+                                    <dt class="text-muted-foreground">
+                                        Категория
+                                    </dt>
+                                    <dd>{{ message.draft.category }}</dd>
+                                    <dt class="text-muted-foreground">Дата</dt>
+                                    <dd>{{ message.draft.date }}</dd>
+                                    <dt class="text-muted-foreground">
+                                        Описание
+                                    </dt>
+                                    <dd>{{ message.draft.description }}</dd>
+                                </template>
                             </dl>
+                            <p
+                                v-if="message.draft.blocked"
+                                class="text-muted-foreground mt-2 text-xs"
+                            >
+                                {{ message.draft.blocked }}
+                            </p>
                             <div class="mt-3 flex gap-2">
                                 <Form
-                                    v-if="
+                                    v-if="message.draft.submit"
+                                    method="post"
+                                    :action="message.draft.submit.action"
+                                    class="inline"
+                                >
+                                    <input
+                                        v-for="(value, name) in message.draft
+                                            .submit.fields"
+                                        :key="String(name)"
+                                        type="hidden"
+                                        :name="String(name)"
+                                        :value="value"
+                                    />
+                                    <Button size="sm" type="submit">
+                                        Записать
+                                    </Button>
+                                </Form>
+                                <Form
+                                    v-else-if="
                                         message.draft.type === 'Расход' &&
                                         message.draft.account_id &&
                                         message.draft.category_id
@@ -394,7 +447,9 @@ function discardDraft(index: number): void {
                                     <input
                                         type="hidden"
                                         name="amount"
-                                        :value="toDecimal(message.draft.amount)"
+                                        :value="
+                                            toDecimal(message.draft.amount ?? 0)
+                                        "
                                     />
                                     <input
                                         type="hidden"
@@ -428,7 +483,7 @@ function discardDraft(index: number): void {
                 <p class="text-muted-foreground text-xs">
                     {{
                         configured
-                            ? 'Модель видит снимок справа. В журнал попадает только кнопка «Записать».'
+                            ? 'Модель видит снимок справа. В бюджет попадает только кнопка «Записать».'
                             : 'Нет ключа AI-провайдера. Журнал и чек работают, чат выключен.'
                     }}
                 </p>
@@ -450,7 +505,7 @@ function discardDraft(index: number): void {
                         type="text"
                         :disabled="!configured || sending"
                         maxlength="1000"
-                        placeholder="Куда ушли деньги? / кофе 350 с карты"
+                        placeholder="Куда ушли деньги? / кофе 350 / цель отпуск 150000"
                         class="border-input bg-background ring-offset-background placeholder:text-muted-foreground h-10 flex-1 rounded-md border px-3 text-sm"
                     />
                     <Button type="submit" :disabled="!configured || sending">

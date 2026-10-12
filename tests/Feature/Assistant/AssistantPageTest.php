@@ -4,6 +4,7 @@ use App\Actions\Accounts\CreateAccount;
 use App\Actions\Workspaces\CreateWorkspace;
 use App\Models\AssistantConversation;
 use App\Models\AssistantMessage;
+use App\Models\Category;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Support\AssistantPrompt;
@@ -99,7 +100,9 @@ it('puts the safety lock into every system prompt', function () {
 
     expect($prompt)
         ->toContain('НЕИЗМЕНЯЕМЫЕ ОГРАНИЧЕНИЯ MONETKA')
-        ->toContain('Не выдавай код');
+        ->toContain('Не выдавай код')
+        ->toContain('"type":"goal"')
+        ->toContain('"type":"recurrence"');
 });
 
 it('refuses prompt injections without calling the model', function () {
@@ -490,6 +493,99 @@ it('records an assistant draft of 1500 rubles without multiplying kopecks again'
         ->assertSessionHasNoErrors();
 
     expect(Transaction::query()->where('description', 'футболка')->value('amount'))->toBe(150000);
+});
+
+it('returns an income draft without writing the journal', function () {
+    config([
+        'services.ai.key' => 'test-key',
+        'services.ai.provider' => 'openrouter',
+        'services.ai.base_url' => 'https://openrouter.ai/api/v1',
+        'services.ai.model' => 'openrouter/free',
+        'services.openrouter.key' => null,
+    ]);
+
+    Http::fake([
+        'https://openrouter.ai/api/v1/chat/completions' => Http::response([
+            'choices' => [[
+                'message' => [
+                    'content' => json_encode([
+                        'text' => 'Это черновик дохода.',
+                        'draft' => [
+                            'type' => 'income',
+                            'amount_minor' => 8000000,
+                            'account_name' => 'Карта',
+                            'category_name' => 'Зарплата',
+                            'description' => 'аванс',
+                        ],
+                    ], JSON_UNESCAPED_UNICODE),
+                ],
+            ]],
+        ]),
+    ]);
+
+    $user = User::factory()->create();
+    $workspace = (new CreateWorkspace)->execute($user, 'Семья', 'RUB');
+    $account = (new CreateAccount)->execute($workspace, $user, [
+        'name' => 'Карта',
+        'type' => 'checking',
+        'bank_id' => null,
+        'user_id' => null,
+        'opening_balance' => 0,
+    ]);
+    $category = $workspace->categories()->where('kind', 'income')->where('name', 'Зарплата')->firstOrFail();
+
+    $this->actingAs($user)
+        ->postJson(route('assistant.store'), ['message' => 'зарплата 80000 на карту'])
+        ->assertOk()
+        ->assertJsonPath('draft.type', 'Доход')
+        ->assertJsonPath('draft.submit.action', '/transactions/income')
+        ->assertJsonPath('draft.submit.fields.account_id', (string) $account->id)
+        ->assertJsonPath('draft.submit.fields.category_id', (string) $category->id)
+        ->assertJsonPath('draft.submit.fields.amount', '80000.00');
+
+    expect(Transaction::query()->count())->toBe(0);
+});
+
+it('returns a category draft without creating the category', function () {
+    config([
+        'services.ai.key' => 'test-key',
+        'services.ai.provider' => 'openrouter',
+        'services.ai.base_url' => 'https://openrouter.ai/api/v1',
+        'services.ai.model' => 'openrouter/free',
+        'services.openrouter.key' => null,
+    ]);
+
+    Http::fake([
+        'https://openrouter.ai/api/v1/chat/completions' => Http::response([
+            'choices' => [[
+                'message' => [
+                    'content' => json_encode([
+                        'text' => 'Это черновик категории.',
+                        'draft' => [
+                            'type' => 'category',
+                            'kind' => 'expense',
+                            'name' => 'Такси',
+                            'emoji' => '🚕',
+                            'color' => '#1C6CFF',
+                        ],
+                    ], JSON_UNESCAPED_UNICODE),
+                ],
+            ]],
+        ]),
+    ]);
+
+    $user = User::factory()->create();
+    $workspace = (new CreateWorkspace)->execute($user, 'Семья', 'RUB');
+    $before = $workspace->categories()->count();
+
+    $this->actingAs($user)
+        ->postJson(route('assistant.store'), ['message' => 'добавь категорию такси'])
+        ->assertOk()
+        ->assertJsonPath('draft.submit.action', '/categories')
+        ->assertJsonPath('draft.submit.fields.name', 'Такси')
+        ->assertJsonPath('draft.submit.fields.kind', 'expense');
+
+    expect(Category::query()->where('workspace_id', $workspace->id)->count())->toBe($before);
 });
 
 it('treats ollama as ready without an api key', function () {

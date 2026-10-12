@@ -4,6 +4,7 @@ namespace App\Actions\Assistant;
 
 use App\Models\Workspace;
 use App\Support\AiSettings;
+use App\Support\AssistantDraft;
 use App\Support\AssistantPrompt;
 use App\Support\AssistantReplyGuard;
 use App\Support\AssistantSnapshot;
@@ -17,7 +18,7 @@ class AskAssistant
 {
     /**
      * @param  list<array{role: string, content: string}>  $history
-     * @return array{text: string, draft: array{type: string, amount: int, account: string, account_id: int|null, category: string, category_id: int|null, date: string, description: string}|null}
+     * @return array{text: string, draft: array<string, mixed>|null}
      */
     public function execute(Workspace $workspace, string $message, array $history = []): array
     {
@@ -232,7 +233,7 @@ class AskAssistant
 
     /**
      * @param  array<string, mixed>  $snapshot
-     * @return array{text: string, draft: array{type: string, amount: int, account: string, account_id: int|null, category: string, category_id: int|null, date: string, description: string}|null}
+     * @return array{text: string, draft: array<string, mixed>|null}
      */
     private function parse(string $content, array $snapshot): array
     {
@@ -277,103 +278,10 @@ class AskAssistant
 
     /**
      * @param  array<string, mixed>  $snapshot
-     * @return array{type: string, amount: int, account: string, account_id: int|null, category: string, category_id: int|null, date: string, description: string}|null
+     * @return array<string, mixed>|null
      */
     private function draft(mixed $draft, array $snapshot): ?array
     {
-        if (! is_array($draft)) {
-            return null;
-        }
-
-        $type = (string) ($draft['type'] ?? 'expense');
-
-        if (! in_array($type, ['expense', 'income', 'transfer'], true)) {
-            return null;
-        }
-
-        $amount = (int) ($draft['amount_minor'] ?? 0);
-
-        if ($amount < 1) {
-            return null;
-        }
-
-        $account = $this->matchAccount((string) ($draft['account_name'] ?? ''), $snapshot['accounts'] ?? []);
-        $category = $this->matchCategory((string) ($draft['category_name'] ?? ''), $snapshot['expense_categories'] ?? []);
-        $date = (string) ($draft['date'] ?? now()->toDateString());
-
-        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) !== 1) {
-            $date = now()->toDateString();
-        }
-
-        $labels = [
-            'expense' => 'Расход',
-            'income' => 'Доход',
-            'transfer' => 'Перевод',
-        ];
-
-        return [
-            'type' => $labels[$type],
-            'amount' => $amount,
-            'account' => $account['name'] ?? (string) ($draft['account_name'] ?? ''),
-            'account_id' => $account['id'] ?? null,
-            'category' => trim(($category['emoji'] ?? '').' '.($category['name'] ?? (string) ($draft['category_name'] ?? ''))),
-            'category_id' => $category['id'] ?? null,
-            'date' => $date,
-            'description' => mb_substr(trim((string) ($draft['description'] ?? '')), 0, 255),
-        ];
-    }
-
-    /**
-     * @param  list<array{id: int, name: string, balance: int}>  $accounts
-     * @return array{id: int, name: string}|null
-     */
-    private function matchAccount(string $needle, array $accounts): ?array
-    {
-        $needle = mb_strtolower(trim($needle));
-
-        if ($needle === '') {
-            return $accounts[0] ?? null;
-        }
-
-        foreach ($accounts as $account) {
-            if (mb_strtolower($account['name']) === $needle) {
-                return $account;
-            }
-        }
-
-        foreach ($accounts as $account) {
-            if (str_contains(mb_strtolower($account['name']), $needle) || str_contains($needle, mb_strtolower($account['name']))) {
-                return $account;
-            }
-        }
-
-        return $accounts[0] ?? null;
-    }
-
-    /**
-     * @param  list<array{id: int, name: string, emoji: string}>  $categories
-     * @return array{id: int, name: string, emoji: string}|null
-     */
-    private function matchCategory(string $needle, array $categories): ?array
-    {
-        $needle = mb_strtolower(trim($needle));
-
-        if ($needle === '' || $categories === []) {
-            return $categories[0] ?? null;
-        }
-
-        foreach ($categories as $category) {
-            if (mb_strtolower($category['name']) === $needle) {
-                return $category;
-            }
-        }
-
-        foreach ($categories as $category) {
-            if (str_contains(mb_strtolower($category['name']), $needle) || str_contains($needle, mb_strtolower($category['name']))) {
-                return $category;
-            }
-        }
-
-        return $categories[0] ?? null;
+        return AssistantDraft::from($draft, $snapshot);
     }
 }

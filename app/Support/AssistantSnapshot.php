@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Enums\CategoryKind;
 use App\Models\Account;
+use App\Models\Bank;
 use App\Models\Category;
 use App\Models\CategoryLimit;
 use App\Models\Debt;
@@ -33,7 +34,10 @@ final class AssistantSnapshot
      *     goals: list<array{name: string, progress: int, target: int, date: string|null}>,
      *     debts: list<array{direction: string, name: string, remainder: int}>,
      *     recurrences: list<array{description: string|null, type: string, amount: int, next_date: string}>,
-     *     expense_categories: list<array{id: int, name: string, emoji: string}>
+     *     expense_categories: list<array{id: int, name: string, emoji: string}>,
+     *     income_categories: list<array{id: int, name: string, emoji: string}>,
+     *     banks: list<array{id: int, name: string}>,
+     *     today: string
      * }
      */
     public static function for(Workspace $workspace, ?Carbon $now = null): array
@@ -46,6 +50,7 @@ final class AssistantSnapshot
             ->get();
 
         return [
+            'today' => $now->toDateString(),
             'month' => $now->format('Y-m'),
             'month_label' => mb_ucfirst($now->locale('ru')->isoFormat('MMMM YYYY')),
             'currency' => $workspace->currency,
@@ -105,18 +110,36 @@ final class AssistantSnapshot
                 ])
                 ->values()
                 ->all(),
-            'expense_categories' => $workspace->categories()
-                ->where('kind', CategoryKind::Expense)
+            'expense_categories' => self::categories($workspace, CategoryKind::Expense),
+            'income_categories' => self::categories($workspace, CategoryKind::Income),
+            'banks' => $workspace->banks()
                 ->orderBy('name')
                 ->get()
-                ->map(fn (Category $category): array => [
-                    'id' => $category->id,
-                    'name' => $category->name,
-                    'emoji' => $category->emoji,
+                ->map(fn (Bank $bank): array => [
+                    'id' => $bank->id,
+                    'name' => $bank->name,
                 ])
                 ->values()
                 ->all(),
         ];
+    }
+
+    /**
+     * @return list<array{id: int, name: string, emoji: string}>
+     */
+    private static function categories(Workspace $workspace, CategoryKind $kind): array
+    {
+        return $workspace->categories()
+            ->where('kind', $kind)
+            ->orderBy('name')
+            ->get()
+            ->map(fn (Category $category): array => [
+                'id' => $category->id,
+                'name' => $category->name,
+                'emoji' => $category->emoji,
+            ])
+            ->values()
+            ->all();
     }
 
     /**
