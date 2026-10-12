@@ -103,6 +103,14 @@ class Workspace extends Model
         return $this->hasMany(Recurrence::class);
     }
 
+    /**
+     * @return HasMany<AssistantConversation, $this>
+     */
+    public function assistantConversations(): HasMany
+    {
+        return $this->hasMany(AssistantConversation::class);
+    }
+
     public function roleFor(User $user): ?WorkspaceRole
     {
         $membership = $this->memberships()->where('user_id', $user->id)->first();

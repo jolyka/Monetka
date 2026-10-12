@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Form, Head, usePage } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 
@@ -64,11 +64,21 @@ type ChatMessage = {
     draft?: Draft;
 };
 
-const { snapshot, model, provider, configured } = defineProps<{
+type Conversation = {
+    id: number;
+    title: string;
+    last_message_at: string | null;
+    messages_count: number;
+};
+
+const { snapshot, model, provider, configured, conversations, activeConversationId, activeMessages } = defineProps<{
     snapshot: Snapshot;
     model: string;
     provider: string;
     configured: boolean;
+    conversations: Conversation[];
+    activeConversationId: number | null;
+    activeMessages: ChatMessage[];
 }>();
 
 const page = usePage();
@@ -89,15 +99,19 @@ defineOptions({
     },
 });
 
-const messages = ref<ChatMessage[]>([
-    {
-        role: 'assistant',
-        text: `Смотрю только бюджет «${snapshot.workspace_name}» за ${snapshot.month_label}. Цифры считает сервер. Я не создаю операции и не меняю остатки.`,
-    },
-]);
+const introMessage: ChatMessage = {
+    role: 'assistant',
+    text: `Смотрю только бюджет «${snapshot.workspace_name}» за ${snapshot.month_label}. Цифры считает сервер. Я не создаю операции и не меняю остатки.`,
+};
+const messages = ref<ChatMessage[]>(
+    activeMessages.length > 0 ? [...activeMessages] : [introMessage],
+);
+const currentConversationId = ref<number | null>(activeConversationId);
+const conversationList = ref<Conversation[]>([...conversations]);
 const input = ref('');
 const sending = ref(false);
 const error = ref('');
+const loadingConversation = ref(false);
 const prompts = [
     'Куда ушли деньги?',
     'Сколько ещё можно на лимит?',
@@ -173,6 +187,7 @@ async function ask(text?: string): Promise<void> {
             },
             body: JSON.stringify({
                 message,
+                conversation_id: currentConversationId.value,
                 history: historyPayload().slice(0, -1),
             }),
         });
@@ -180,6 +195,7 @@ async function ask(text?: string): Promise<void> {
         const data = (await response.json()) as {
             text?: string;
             draft?: Draft | null;
+            conversation_id?: number;
             message?: string;
             errors?: { message?: string[] };
         };
@@ -196,6 +212,23 @@ async function ask(text?: string): Promise<void> {
             text: data.text ?? '',
             draft: data.draft ?? undefined,
         });
+        if (data.conversation_id) {
+            currentConversationId.value = data.conversation_id;
+            const existing = conversationList.value.find(
+                (conversation) => conversation.id === data.conversation_id,
+            );
+            if (existing) {
+                existing.messages_count += 2;
+                existing.last_message_at = new Date().toISOString();
+            } else {
+                conversationList.value.unshift({
+                    id: data.conversation_id,
+                    title: message.slice(0, 120),
+                    last_message_at: new Date().toISOString(),
+                    messages_count: 2,
+                });
+            }
+        }
     } catch (caught) {
         error.value =
             caught instanceof Error ? caught.message : 'Модель не ответила.';
@@ -207,6 +240,51 @@ async function ask(text?: string): Promise<void> {
         sending.value = false;
     }
 }
+
+function startConversation(): void {
+    currentConversationId.value = null;
+    messages.value = [introMessage];
+    input.value = '';
+    error.value = '';
+}
+
+async function loadConversation(id: number): Promise<void> {
+    if (id === currentConversationId.value || loadingConversation.value) {
+        return;
+    }
+
+    loadingConversation.value = true;
+    error.value = '';
+
+    try {
+        const response = await fetch(`/assistant/conversations/${id}`, {
+            headers: { Accept: 'application/json' },
+            credentials: 'same-origin',
+        });
+        if (!response.ok) {
+            throw new Error('Не удалось открыть историю.');
+        }
+        const data = (await response.json()) as {
+            conversation_id: number;
+            messages: ChatMessage[];
+        };
+        currentConversationId.value = data.conversation_id;
+        messages.value = data.messages.length > 0 ? data.messages : [introMessage];
+    } catch (caught) {
+        error.value = caught instanceof Error ? caught.message : 'Не удалось открыть историю.';
+    } finally {
+        loadingConversation.value = false;
+    }
+}
+
+function formatConversationDate(value: string | null): string {
+    if (!value) return '';
+    return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short' }).format(new Date(value));
+}
+
+onMounted(() => {
+    document.querySelector('.assistant-messages')?.scrollTo({ top: 99999 });
+});
 
 function discardDraft(index: number): void {
     const message = messages.value[index];
@@ -247,7 +325,7 @@ function discardDraft(index: number): void {
                 </span>
             </header>
 
-            <div class="flex flex-1 flex-col gap-4 overflow-y-auto px-5 py-5">
+            <div class="assistant-messages flex flex-1 flex-col gap-4 overflow-y-auto px-5 py-5">
                 <article
                     v-for="(message, index) in messages"
                     :key="index"
@@ -386,6 +464,40 @@ function discardDraft(index: number): void {
         <aside
             class="border-border bg-card text-card-foreground rounded-2xl border px-5 py-5"
         >
+            <div class="mb-5 border-b border-dashed pb-5">
+                <div class="flex items-center justify-between gap-3">
+                    <p
+                        class="text-muted-foreground font-mono text-[11px] tracking-[0.18em] uppercase"
+                    >
+                        История чатов
+                    </p>
+                    <button
+                        type="button"
+                        class="text-primary text-xs font-medium hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                        @click="startConversation"
+                    >
+                        Новый чат
+                    </button>
+                </div>
+                <p v-if="conversationList.length === 0" class="text-muted-foreground mt-3 text-sm">
+                    Здесь появятся ваши разговоры с помощником.
+                </p>
+                <div v-else class="mt-3 max-h-56 space-y-1 overflow-y-auto">
+                    <button
+                        v-for="conversation in conversationList"
+                        :key="conversation.id"
+                        type="button"
+                        class="hover:bg-secondary flex w-full items-center justify-between gap-3 rounded-lg px-2.5 py-2 text-left text-sm transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                        :class="conversation.id === currentConversationId ? 'bg-secondary' : ''"
+                        @click="loadConversation(conversation.id)"
+                    >
+                        <span class="min-w-0 truncate">{{ conversation.title }}</span>
+                        <span class="text-muted-foreground shrink-0 text-[11px]">
+                            {{ formatConversationDate(conversation.last_message_at) }}
+                        </span>
+                    </button>
+                </div>
+            </div>
             <p
                 class="text-muted-foreground font-mono text-[11px] tracking-[0.18em] uppercase"
             >

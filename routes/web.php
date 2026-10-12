@@ -85,6 +85,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('assistant', [AssistantController::class, 'store'])
             ->middleware('throttle:20,1')
             ->name('assistant.store');
+        Route::get('assistant/conversations/{conversation}', [AssistantController::class, 'conversation'])
+            ->name('assistant.conversations.show');
 
         Route::get('receipts', [ReceiptController::class, 'index'])->name('receipts.index');
         Route::post('receipts/connect', [ReceiptController::class, 'connect'])

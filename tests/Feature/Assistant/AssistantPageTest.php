@@ -2,6 +2,8 @@
 
 use App\Actions\Accounts\CreateAccount;
 use App\Actions\Workspaces\CreateWorkspace;
+use App\Models\AssistantConversation;
+use App\Models\AssistantMessage;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Support\AssistantPrompt;
@@ -233,6 +235,46 @@ it('asks the model with the snapshot and does not write the journal', function (
     });
 
     expect(Transaction::query()->where('type', 'expense')->count())->toBe(0);
+});
+
+it('persists a conversation and only returns it to its owner and workspace', function () {
+    config([
+        'services.openrouter.key' => 'test-key',
+        'services.openrouter.base_url' => 'https://openrouter.ai/api/v1',
+        'services.openrouter.model' => 'openrouter/free',
+    ]);
+
+    Http::fake([
+        'https://openrouter.ai/api/v1/chat/completions' => Http::response([
+            'choices' => [[
+                'message' => ['content' => json_encode([
+                    'text' => 'Ответ из истории.',
+                    'draft' => null,
+                ], JSON_UNESCAPED_UNICODE)],
+            ]],
+        ], 200),
+    ]);
+
+    $user = User::factory()->create();
+    $workspace = (new CreateWorkspace)->execute($user, 'Семья', 'RUB');
+
+    $response = $this->actingAs($user)->postJson(route('assistant.store'), [
+        'message' => 'Что с расходами?',
+    ])->assertOk();
+
+    $conversationId = $response->json('conversation_id');
+
+    expect($conversationId)->toBeInt()
+        ->and(AssistantConversation::query()->whereKey($conversationId)->value('workspace_id'))
+        ->toBe($workspace->id)
+        ->and(AssistantMessage::query()->where('assistant_conversation_id', $conversationId)->count())
+        ->toBe(2);
+
+    $this->actingAs($user)
+        ->getJson(route('assistant.conversations.show', $conversationId))
+        ->assertOk()
+        ->assertJsonPath('messages.0.text', 'Что с расходами?')
+        ->assertJsonPath('messages.1.text', 'Ответ из истории.');
 });
 
 it('routes assistant requests through the selected compatible aggregator', function () {
