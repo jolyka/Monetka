@@ -87,6 +87,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->name('assistant.store');
         Route::get('assistant/conversations/{conversation}', [AssistantController::class, 'conversation'])
             ->name('assistant.conversations.show');
+        Route::post('assistant/messages/{message}/recorded', [AssistantController::class, 'recordDraft'])
+            ->name('assistant.messages.recorded');
 
         Route::get('receipts', [ReceiptController::class, 'index'])->name('receipts.index');
         Route::post('receipts/connect', [ReceiptController::class, 'connect'])

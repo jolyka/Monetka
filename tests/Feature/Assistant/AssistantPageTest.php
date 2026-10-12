@@ -644,3 +644,60 @@ it('asks a local ollama server without an authorization header', function () {
         && $request['model'] === 'llama3.2'
         && ! isset($request['provider']));
 });
+
+it('marks a recorded assistant draft so the button cannot be used again', function () {
+    $user = User::factory()->create();
+    $workspace = (new CreateWorkspace)->execute($user, 'Семья', 'RUB');
+    $conversation = AssistantConversation::query()->create([
+        'user_id' => $user->id,
+        'workspace_id' => $workspace->id,
+    ]);
+    $message = $conversation->messages()->create([
+        'role' => 'assistant',
+        'content' => 'Черновик расхода.',
+        'draft' => [
+            'type' => 'Расход',
+            'amount' => 28000,
+            'submit' => [
+                'action' => '/transactions/expense',
+                'fields' => ['amount' => '280.00'],
+            ],
+        ],
+    ]);
+
+    $this->actingAs($user)
+        ->postJson(route('assistant.messages.recorded', $message))
+        ->assertOk()
+        ->assertJsonPath('recorded', true);
+
+    expect($message->fresh()->draft['recorded'])->toBeTrue();
+
+    $this->actingAs($user)
+        ->get(route('assistant.index'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('messages.0.id', $message->id)
+            ->where('messages.0.draft.recorded', true));
+});
+
+it('does not let another user close an assistant draft', function () {
+    $owner = User::factory()->create();
+    $workspace = (new CreateWorkspace)->execute($owner, 'Семья', 'RUB');
+    $conversation = AssistantConversation::query()->create([
+        'user_id' => $owner->id,
+        'workspace_id' => $workspace->id,
+    ]);
+    $message = $conversation->messages()->create([
+        'role' => 'assistant',
+        'content' => 'Черновик расхода.',
+        'draft' => ['type' => 'Расход', 'amount' => 28000],
+    ]);
+
+    $other = User::factory()->create();
+
+    $this->actingAs($other)
+        ->postJson(route('assistant.messages.recorded', $message))
+        ->assertRedirect(route('workspaces.create'));
+
+    expect($message->fresh()->draft)->not->toHaveKey('recorded');
+});

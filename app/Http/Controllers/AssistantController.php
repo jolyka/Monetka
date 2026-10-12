@@ -45,12 +45,8 @@ class AssistantController extends Controller
             ? AssistantMessage::query()
                 ->where('assistant_conversation_id', $active['id'])
                 ->oldest()
-                ->get(['role', 'content', 'draft'])
-                ->map(fn (AssistantMessage $message): array => [
-                    'role' => $message->role,
-                    'text' => $message->content,
-                    'draft' => $message->draft,
-                ])
+                ->get(['id', 'role', 'content', 'draft'])
+                ->map(fn (AssistantMessage $message): array => $this->presentMessage($message))
                 ->values()
             : collect();
 
@@ -82,7 +78,7 @@ class AssistantController extends Controller
             'role' => 'user',
             'content' => $data['message'],
         ]);
-        $conversation->messages()->create([
+        $assistantMessage = $conversation->messages()->create([
             'role' => 'assistant',
             'content' => $reply['text'],
             'draft' => $reply['draft'],
@@ -92,7 +88,10 @@ class AssistantController extends Controller
             'last_message_at' => now(),
         ])->save();
 
-        return response()->json($reply + ['conversation_id' => $conversation->id]);
+        return response()->json($reply + [
+            'conversation_id' => $conversation->id,
+            'message_id' => $assistantMessage->id,
+        ]);
     }
 
     public function conversation(Request $request, AssistantConversation $conversation): JsonResponse
@@ -110,14 +109,46 @@ class AssistantController extends Controller
             'conversation_id' => $conversation->id,
             'messages' => $conversation->messages()
                 ->oldest()
-                ->get(['role', 'content', 'draft'])
-                ->map(fn (AssistantMessage $message): array => [
-                    'role' => $message->role,
-                    'text' => $message->content,
-                    'draft' => $message->draft,
-                ])
+                ->get(['id', 'role', 'content', 'draft'])
+                ->map(fn (AssistantMessage $message): array => $this->presentMessage($message))
                 ->values(),
         ]);
+    }
+
+    public function recordDraft(Request $request, AssistantMessage $message): JsonResponse
+    {
+        $workspace = $this->currentWorkspace($request);
+        Gate::authorize('update', $workspace);
+
+        $conversation = $message->conversation;
+
+        abort_unless(
+            $conversation instanceof AssistantConversation
+                && $conversation->user_id === $request->user()->id
+                && $conversation->workspace_id === $workspace->id,
+            404,
+        );
+
+        $draft = $message->draft;
+        abort_unless(is_array($draft), 404);
+
+        $draft['recorded'] = true;
+        $message->forceFill(['draft' => $draft])->save();
+
+        return response()->json(['recorded' => true]);
+    }
+
+    /**
+     * @return array{id: int, role: string, text: string, draft: array<string, mixed>|null}
+     */
+    private function presentMessage(AssistantMessage $message): array
+    {
+        return [
+            'id' => $message->id,
+            'role' => $message->role,
+            'text' => $message->content,
+            'draft' => $message->draft,
+        ];
     }
 
     private function resolveConversation(Request $request, Workspace $workspace, ?int $id): AssistantConversation

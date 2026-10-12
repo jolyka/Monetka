@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { Form, Head, usePage } from '@inertiajs/vue3';
-import { computed, onMounted, ref } from 'vue';
+import { Head, usePage } from '@inertiajs/vue3';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 
@@ -64,9 +64,11 @@ type Draft = {
     lines?: DraftLine[];
     submit?: DraftSubmit | null;
     blocked?: string | null;
+    recorded?: boolean;
 };
 
 type ChatMessage = {
+    id?: number;
     role: 'user' | 'assistant';
     text: string;
     draft?: Draft;
@@ -120,6 +122,11 @@ const input = ref('');
 const sending = ref(false);
 const error = ref('');
 const loadingConversation = ref(false);
+const recordingIndex = ref<number | null>(null);
+const recordError = ref('');
+const recordErrorIndex = ref<number | null>(null);
+const messagesEl = ref<HTMLElement | null>(null);
+const chatEnd = ref<HTMLElement | null>(null);
 const prompts = [
     'Куда ушли деньги?',
     'кофе 350 с карты',
@@ -205,6 +212,7 @@ async function ask(text?: string): Promise<void> {
             text?: string;
             draft?: Draft | null;
             conversation_id?: number;
+            message_id?: number;
             message?: string;
             errors?: { message?: string[] };
         };
@@ -217,6 +225,7 @@ async function ask(text?: string): Promise<void> {
         }
 
         messages.value.push({
+            id: data.message_id,
             role: 'assistant',
             text: data.text ?? '',
             draft: data.draft ?? undefined,
@@ -279,6 +288,7 @@ async function loadConversation(id: number): Promise<void> {
         };
         currentConversationId.value = data.conversation_id;
         messages.value = data.messages.length > 0 ? data.messages : [introMessage];
+        scrollChatToEnd();
     } catch (caught) {
         error.value = caught instanceof Error ? caught.message : 'Не удалось открыть историю.';
     } finally {
@@ -291,18 +301,125 @@ function formatConversationDate(value: string | null): string {
     return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short' }).format(new Date(value));
 }
 
-onMounted(() => {
-    document.querySelector('.assistant-messages')?.scrollTo({ top: 99999 });
-});
+function scrollChatToEnd(): void {
+    nextTick(() => {
+        requestAnimationFrame(() => {
+            if (messagesEl.value) {
+                messagesEl.value.scrollTop = messagesEl.value.scrollHeight;
+            }
+
+            chatEnd.value?.scrollIntoView({ block: 'end' });
+        });
+    });
+}
+
+onMounted(scrollChatToEnd);
+
+watch(() => messages.value.length, scrollChatToEnd);
 
 function discardDraft(index: number): void {
     const message = messages.value[index];
 
-    if (message === undefined) {
+    if (message === undefined || message.draft?.recorded || recordingIndex.value === index) {
         return;
     }
 
-    messages.value[index] = { role: message.role, text: message.text };
+    messages.value[index] = { role: message.role, text: message.text, id: message.id };
+}
+
+function draftAction(draft: Draft): DraftSubmit | null {
+    if (draft.recorded) {
+        return null;
+    }
+
+    if (draft.submit) {
+        return draft.submit;
+    }
+
+    if (draft.type === 'Расход' && draft.account_id && draft.category_id) {
+        return {
+            action: '/transactions/expense',
+            fields: {
+                account_id: draft.account_id,
+                category_id: draft.category_id,
+                amount: toDecimal(draft.amount ?? 0),
+                occurred_on: draft.date ?? '',
+                description: draft.description ?? '',
+            },
+        };
+    }
+
+    return null;
+}
+
+async function recordDraft(index: number): Promise<void> {
+    const message = messages.value[index];
+    const submit = message?.draft ? draftAction(message.draft) : null;
+
+    if (!message?.draft || !submit || recordingIndex.value !== null) {
+        return;
+    }
+
+    recordingIndex.value = index;
+    recordError.value = '';
+    recordErrorIndex.value = null;
+
+    try {
+        const body = new FormData();
+
+        for (const [name, value] of Object.entries(submit.fields)) {
+            body.append(name, String(value));
+        }
+
+        const response = await fetch(submit.action, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                Accept: 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-XSRF-TOKEN': xsrfToken(),
+            },
+            body,
+        });
+
+        if (!response.ok) {
+            const data = (await response.json().catch(() => null)) as {
+                message?: string;
+                errors?: Record<string, string[]>;
+            } | null;
+            const firstError = data?.errors
+                ? Object.values(data.errors)[0]?.[0]
+                : undefined;
+
+            throw new Error(firstError ?? data?.message ?? 'Не удалось записать.');
+        }
+
+        messages.value[index] = {
+            ...message,
+            draft: { ...message.draft, recorded: true },
+        };
+
+        if (message.id) {
+            const saved = await fetch(`/assistant/messages/${message.id}/recorded`, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-XSRF-TOKEN': xsrfToken(),
+                },
+            });
+
+            if (!saved.ok) {
+                throw new Error('Запись прошла, но черновик не удалось закрыть. Обновите страницу и не нажимайте «Записать» ещё раз.');
+            }
+        }
+    } catch (caught) {
+        recordError.value = caught instanceof Error ? caught.message : 'Не удалось записать.';
+        recordErrorIndex.value = index;
+    } finally {
+        recordingIndex.value = null;
+    }
 }
 </script>
 
@@ -313,7 +430,7 @@ function discardDraft(index: number): void {
         class="mx-auto grid w-full max-w-6xl gap-6 p-4 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start"
     >
         <section
-            class="border-border bg-background flex min-h-[36rem] flex-col overflow-hidden rounded-2xl border"
+            class="border-border bg-background flex h-[calc(100svh-8.5rem)] min-h-[28rem] flex-col overflow-hidden rounded-2xl border"
         >
             <header
                 class="border-border flex items-start justify-between gap-4 border-b px-5 py-4"
@@ -334,7 +451,10 @@ function discardDraft(index: number): void {
                 </span>
             </header>
 
-            <div class="assistant-messages flex flex-1 flex-col gap-4 overflow-y-auto px-5 py-5">
+            <div
+                ref="messagesEl"
+                class="assistant-messages flex flex-1 flex-col gap-4 overflow-y-auto px-5 py-5"
+            >
                 <article
                     v-for="(message, index) in messages"
                     :key="index"
@@ -405,81 +525,51 @@ function discardDraft(index: number): void {
                             >
                                 {{ message.draft.blocked }}
                             </p>
-                            <div class="mt-3 flex gap-2">
-                                <Form
-                                    v-if="message.draft.submit"
-                                    method="post"
-                                    :action="message.draft.submit.action"
-                                    class="inline"
-                                >
-                                    <input
-                                        v-for="(value, name) in message.draft
-                                            .submit.fields"
-                                        :key="String(name)"
-                                        type="hidden"
-                                        :name="String(name)"
-                                        :value="value"
-                                    />
-                                    <Button size="sm" type="submit">
-                                        Записать
-                                    </Button>
-                                </Form>
-                                <Form
-                                    v-else-if="
-                                        message.draft.type === 'Расход' &&
-                                        message.draft.account_id &&
-                                        message.draft.category_id
+                            <p
+                                v-if="message.draft.recorded"
+                                class="mt-3 text-xs text-emerald-600 dark:text-emerald-400"
+                            >
+                                Записано
+                            </p>
+                            <div v-else class="mt-3 flex gap-2">
+                                <Button
+                                    v-if="
+                                        draftAction(message.draft) &&
+                                        !message.draft.blocked
                                     "
-                                    method="post"
-                                    action="/transactions/expense"
-                                    class="inline"
+                                    size="sm"
+                                    type="button"
+                                    :disabled="recordingIndex !== null"
+                                    @click="recordDraft(index)"
                                 >
-                                    <input
-                                        type="hidden"
-                                        name="account_id"
-                                        :value="message.draft.account_id"
-                                    />
-                                    <input
-                                        type="hidden"
-                                        name="category_id"
-                                        :value="message.draft.category_id"
-                                    />
-                                    <input
-                                        type="hidden"
-                                        name="amount"
-                                        :value="
-                                            toDecimal(message.draft.amount ?? 0)
-                                        "
-                                    />
-                                    <input
-                                        type="hidden"
-                                        name="occurred_on"
-                                        :value="message.draft.date"
-                                    />
-                                    <input
-                                        type="hidden"
-                                        name="description"
-                                        :value="message.draft.description"
-                                    />
-                                    <Button size="sm" type="submit">
-                                        Записать
-                                    </Button>
-                                </Form>
+                                    <Spinner v-if="recordingIndex === index" />
+                                    Записать
+                                </Button>
                                 <Button
                                     size="sm"
                                     variant="ghost"
                                     type="button"
+                                    :disabled="recordingIndex === index"
                                     @click="discardDraft(index)"
                                 >
                                     Отмена
                                 </Button>
                             </div>
+                            <p
+                                v-if="recordErrorIndex === index"
+                                class="text-destructive mt-2 text-xs"
+                            >
+                                {{ recordError }}
+                            </p>
                         </div>
                     </div>
                 </article>
             </div>
 
-            <footer class="border-border space-y-3 border-t px-5 py-4">
+            <footer
+                ref="chatEnd"
+                class="border-border space-y-3 border-t px-5 py-4"
+            >
                 <p class="text-muted-foreground text-xs">
                     {{
                         configured
