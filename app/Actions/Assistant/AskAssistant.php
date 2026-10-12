@@ -3,6 +3,7 @@
 namespace App\Actions\Assistant;
 
 use App\Models\Workspace;
+use App\Support\AiSettings;
 use App\Support\AssistantPrompt;
 use App\Support\AssistantReplyGuard;
 use App\Support\AssistantSnapshot;
@@ -23,7 +24,7 @@ class AskAssistant
         $settings = $this->settings();
         $key = $settings['key'];
 
-        if ($key === '') {
+        if ($key === '' && AiSettings::requiresKey($settings['provider'])) {
             throw ValidationException::withMessages([
                 'message' => 'Нет API-ключа AI-провайдера. Журнал и чек работают, чат недоступен.',
             ]);
@@ -109,10 +110,13 @@ class AskAssistant
     {
         try {
             $request = Http::baseUrl($settings['base_url'])
-                ->withToken($settings['key'])
                 ->acceptJson()
                 ->connectTimeout(10)
-                ->timeout(45);
+                ->timeout($settings['provider'] === 'ollama' ? 120 : 45);
+
+            if ($settings['key'] !== '') {
+                $request = $request->withToken($settings['key']);
+            }
 
             if ($settings['provider'] === 'openrouter') {
                 $request = $request->withHeaders([
@@ -155,6 +159,12 @@ class AskAssistant
                 : 'Нет связи с OpenRouter. Проверьте интернет и попробуйте ещё раз.';
         }
 
+        if ($provider === 'ollama') {
+            return $timeout
+                ? 'Ollama не успел ответить. Модель может ещё загружаться — подождите и спросите снова.'
+                : 'Нет связи с сервером Ollama. Проверьте, что он запущен, и адрес API в AI-настройках.';
+        }
+
         return $timeout
             ? 'AI-провайдер не успел ответить. Подождите минуту и спросите снова.'
             : 'Нет связи с AI-провайдером. Проверьте адрес API и попробуйте ещё раз.';
@@ -166,8 +176,16 @@ class AskAssistant
             'openrouter' => 'OpenRouter',
             'proxyapi' => 'ProxyAPI',
             'vsegpt' => 'VseGPT',
+            'ollama' => 'Ollama',
             default => 'AI-провайдер',
         };
+
+        if ($provider === 'ollama') {
+            return match ($response->status()) {
+                404 => 'Модель не найдена на сервере Ollama. Проверьте имя в AI-настройках.',
+                default => 'Ollama не ответил. Проверьте, что сервер запущен и модель скачана.',
+            };
+        }
 
         if ($provider === 'openrouter') {
             return match ($response->status()) {
@@ -191,10 +209,11 @@ class AskAssistant
      */
     private function settings(): array
     {
+        $provider = (string) config('services.ai.provider', 'openrouter');
         $aiKey = config('services.ai.key');
         $legacyKey = config('services.openrouter.key');
 
-        if ((! is_string($aiKey) || $aiKey === '') && is_string($legacyKey) && $legacyKey !== '') {
+        if ($provider === 'openrouter' && (! is_string($aiKey) || $aiKey === '') && is_string($legacyKey) && $legacyKey !== '') {
             return [
                 'provider' => 'openrouter',
                 'key' => $legacyKey,

@@ -36,6 +36,9 @@ it('allows only administrators to open AI settings', function () {
             ->has('providers.openrouter')
             ->has('providers.proxyapi')
             ->has('providers.vsegpt')
+            ->has('providers.ollama')
+            ->where('providers.ollama.base_url', 'http://127.0.0.1:11434/v1')
+            ->where('providers.ollama.requires_key', false)
             ->where('settings.system_prompt', AssistantPrompt::defaultTemplate())
             ->where('settings.default_system_prompt', AssistantPrompt::defaultTemplate()));
 });
@@ -93,4 +96,34 @@ it('keeps the saved key when the key field is blank', function () {
         ->assertSessionHasNoErrors();
 
     expect(file_get_contents($this->envPath))->toContain('AI_API_KEY=old-secret');
+});
+
+it('saves an ollama server without requiring an api key', function () {
+    config([
+        'services.ai.key' => null,
+        'services.ai.provider' => 'openrouter',
+        'services.ai.model' => 'openrouter/free',
+        'services.ai.base_url' => 'https://openrouter.ai/api/v1',
+    ]);
+
+    $admin = User::factory()->create(['is_admin' => true]);
+
+    $this->actingAs($admin)
+        ->put(route('admin.ai.update'), [
+            'provider' => 'ollama',
+            'api_key' => '',
+            'model' => 'llama3.2',
+            'base_url' => 'http://127.0.0.1:11434/v1/',
+            'system_prompt' => AssistantPrompt::defaultTemplate(),
+        ])
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    $contents = file_get_contents($this->envPath);
+
+    expect($contents)
+        ->toContain('AI_PROVIDER="ollama"')
+        ->toContain('AI_MODEL="llama3.2"')
+        ->toContain('AI_BASE_URL="http://127.0.0.1:11434/v1"')
+        ->toContain('AI_API_KEY=old-secret');
 });

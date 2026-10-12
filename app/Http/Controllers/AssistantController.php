@@ -7,6 +7,7 @@ use App\Http\Requests\Assistant\AskAssistantRequest;
 use App\Models\AssistantConversation;
 use App\Models\AssistantMessage;
 use App\Models\Workspace;
+use App\Support\AiSettings;
 use App\Support\AssistantSnapshot;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -21,7 +22,8 @@ class AssistantController extends Controller
         $workspace = $this->currentWorkspace($request);
         Gate::authorize('view', $workspace);
 
-        $key = config('services.ai.key') ?: config('services.openrouter.key');
+        $provider = (string) config('services.ai.provider', 'openrouter');
+        $key = config('services.ai.key') ?: ($provider === 'openrouter' ? config('services.openrouter.key') : null);
         $conversations = AssistantConversation::query()
             ->where('user_id', $request->user()->id)
             ->where('workspace_id', $workspace->id)
@@ -55,8 +57,8 @@ class AssistantController extends Controller
         return Inertia::render('assistant/Index', [
             'snapshot' => AssistantSnapshot::for($workspace),
             'model' => config('services.ai.model') ?: config('services.openrouter.model'),
-            'provider' => config('services.ai.provider', 'openrouter'),
-            'configured' => is_string($key) && $key !== '',
+            'provider' => $provider,
+            'configured' => (is_string($key) && $key !== '') || ! AiSettings::requiresKey($provider),
             'conversations' => $conversations,
             'activeConversationId' => $active['id'] ?? null,
             'activeMessages' => $activeMessages,

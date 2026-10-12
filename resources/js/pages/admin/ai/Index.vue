@@ -28,6 +28,7 @@ type Provider = {
     description: string;
     base_url: string;
     model: string;
+    requires_key: boolean;
 };
 
 type Settings = {
@@ -72,6 +73,32 @@ function resetSystemPrompt(): void {
 const selectedProvider = computed(
     () => props.providers[form.provider] ?? props.providers.custom,
 );
+
+const keyOptional = computed(
+    () => selectedProvider.value?.requires_key === false,
+);
+
+const keyReady = computed(
+    () => props.settings.api_key_configured && !form.clear_api_key,
+);
+
+const apiKeyPlaceholder = computed(() => {
+    if (keyOptional.value) {
+        return 'Можно оставить пустым';
+    }
+
+    return props.settings.api_key_configured
+        ? 'Оставьте пустым, чтобы сохранить текущий'
+        : 'Вставьте API-ключ';
+});
+
+const keyStatus = computed(() => {
+    if (keyReady.value) {
+        return 'Ключ настроен';
+    }
+
+    return keyOptional.value ? 'Ключ не требуется' : 'Ключ не задан';
+});
 
 watch(
     () => form.provider,
@@ -129,7 +156,7 @@ function submit(): void {
                     </h1>
                 </div>
                 <p class="text-muted-foreground text-sm leading-6 md:text-base">
-                    Выберите, через какой агрегатор помощник будет вызывать
+                    Выберите, через какой сервис помощник будет вызывать
                     модель. Настройки хранятся на сервере в
                     <code class="text-foreground">.env</code> и не попадают в
                     клиентский JavaScript.
@@ -151,7 +178,7 @@ function submit(): void {
                 </CardHeader>
                 <CardContent class="space-y-6">
                     <div class="grid gap-2">
-                        <Label for="provider">Агрегатор</Label>
+                        <Label for="provider">Провайдер</Label>
                         <Select v-model="form.provider" name="provider">
                             <SelectTrigger id="provider" class="w-full">
                                 <SelectValue
@@ -176,7 +203,15 @@ function submit(): void {
 
                     <div class="grid gap-2">
                         <div class="flex items-center justify-between gap-3">
-                            <Label for="api-key">API-ключ</Label>
+                            <Label for="api-key">
+                                API-ключ
+                                <span
+                                    v-if="keyOptional"
+                                    class="text-muted-foreground font-normal"
+                                >
+                                    (необязательно)
+                                </span>
+                            </Label>
                             <span
                                 v-if="settings.api_key_configured"
                                 class="text-muted-foreground inline-flex items-center gap-1.5 text-xs"
@@ -194,14 +229,14 @@ function submit(): void {
                             type="password"
                             autocomplete="new-password"
                             :disabled="form.clear_api_key"
-                            :placeholder="
-                                settings.api_key_configured
-                                    ? 'Оставьте пустым, чтобы сохранить текущий'
-                                    : 'Вставьте API-ключ'
-                            "
+                            :placeholder="apiKeyPlaceholder"
                         />
                         <p class="text-muted-foreground text-xs">
-                            Сохранённый ключ никогда не показывается целиком.
+                            {{
+                                keyOptional
+                                    ? 'Локальный Ollama принимает запросы без ключа. Заполните поле, только если сервер требует авторизацию.'
+                                    : 'Сохранённый ключ никогда не показывается целиком.'
+                            }}
                         </p>
                         <label
                             v-if="settings.api_key_configured"
@@ -332,8 +367,7 @@ function submit(): void {
                             <p
                                 class="inline-flex items-center gap-2 text-xs"
                                 :class="
-                                    settings.api_key_configured &&
-                                    !form.clear_api_key
+                                    keyReady || keyOptional
                                         ? 'text-emerald-600 dark:text-emerald-400'
                                         : 'text-muted-foreground'
                                 "
@@ -342,12 +376,7 @@ function submit(): void {
                                     class="size-2 rounded-full bg-current"
                                     aria-hidden="true"
                                 />
-                                {{
-                                    settings.api_key_configured &&
-                                    !form.clear_api_key
-                                        ? 'Ключ настроен'
-                                        : 'Ключ не задан'
-                                }}
+                                {{ keyStatus }}
                             </p>
                         </div>
                     </CardContent>

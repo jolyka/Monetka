@@ -491,3 +491,60 @@ it('records an assistant draft of 1500 rubles without multiplying kopecks again'
 
     expect(Transaction::query()->where('description', 'футболка')->value('amount'))->toBe(150000);
 });
+
+it('treats ollama as ready without an api key', function () {
+    config([
+        'services.ai.provider' => 'ollama',
+        'services.ai.key' => null,
+        'services.ai.model' => 'llama3.2',
+        'services.ai.base_url' => 'http://127.0.0.1:11434/v1',
+        'services.openrouter.key' => 'leftover-openrouter-key',
+    ]);
+
+    $user = User::factory()->create();
+    (new CreateWorkspace)->execute($user, 'Семья', 'RUB');
+
+    $this->actingAs($user)
+        ->get(route('assistant.index'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('configured', true)
+            ->where('provider', 'ollama')
+            ->where('model', 'llama3.2'));
+});
+
+it('asks a local ollama server without an authorization header', function () {
+    config([
+        'services.ai.provider' => 'ollama',
+        'services.ai.key' => null,
+        'services.ai.model' => 'llama3.2',
+        'services.ai.base_url' => 'http://127.0.0.1:11434/v1',
+        'services.openrouter.key' => 'leftover-openrouter-key',
+    ]);
+
+    Http::fake([
+        'http://127.0.0.1:11434/v1/chat/completions' => Http::response([
+            'choices' => [[
+                'message' => [
+                    'content' => json_encode([
+                        'text' => 'Ответ локальной модели.',
+                        'draft' => null,
+                    ], JSON_UNESCAPED_UNICODE),
+                ],
+            ]],
+        ]),
+    ]);
+
+    $user = User::factory()->create();
+    (new CreateWorkspace)->execute($user, 'Семья', 'RUB');
+
+    $this->actingAs($user)
+        ->postJson(route('assistant.store'), ['message' => 'Что с бюджетом?'])
+        ->assertOk()
+        ->assertJsonPath('text', 'Ответ локальной модели.');
+
+    Http::assertSent(fn ($request) => $request->url() === 'http://127.0.0.1:11434/v1/chat/completions'
+        && ! $request->hasHeader('Authorization')
+        && $request['model'] === 'llama3.2'
+        && ! isset($request['provider']));
+});

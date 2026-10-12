@@ -8,7 +8,7 @@ use RuntimeException;
 final class AiSettings
 {
     /**
-     * @return array<string, array{label: string, description: string, base_url: string, model: string}>
+     * @return array<string, array{label: string, description: string, base_url: string, model: string, requires_key: bool}>
      */
     public static function providers(): array
     {
@@ -18,26 +18,42 @@ final class AiSettings
                 'description' => 'Большой каталог моделей и бесплатный автороутер.',
                 'base_url' => 'https://openrouter.ai/api/v1',
                 'model' => 'openrouter/free',
+                'requires_key' => true,
             ],
             'proxyapi' => [
                 'label' => 'ProxyAPI',
                 'description' => 'Единый API с оплатой в рублях и моделями разных вендоров.',
                 'base_url' => 'https://api.proxyapi.ru/v1',
                 'model' => 'openai/gpt-5-mini',
+                'requires_key' => true,
             ],
             'vsegpt' => [
                 'label' => 'VseGPT',
                 'description' => 'OpenAI-совместимый агрегатор с большим каталогом моделей.',
                 'base_url' => 'https://api.vsegpt.ru/v1',
                 'model' => 'openai/gpt-4o-mini',
+                'requires_key' => true,
+            ],
+            'ollama' => [
+                'label' => 'Ollama',
+                'description' => 'Локальный или свой сервер Ollama. Ключ обычно не нужен, имя модели — как в ollama list.',
+                'base_url' => 'http://127.0.0.1:11434/v1',
+                'model' => 'llama3.2',
+                'requires_key' => false,
             ],
             'custom' => [
                 'label' => 'Свой API',
                 'description' => 'Любой шлюз с совместимым OpenAI Chat Completions API.',
                 'base_url' => '',
                 'model' => '',
+                'requires_key' => true,
             ],
         ];
+    }
+
+    public static function requiresKey(string $provider): bool
+    {
+        return self::providers()[$provider]['requires_key'] ?? true;
     }
 
     public function __construct(private readonly ?string $path = null) {}
