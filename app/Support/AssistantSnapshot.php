@@ -11,7 +11,7 @@ use App\Models\Debt;
 use App\Models\Goal;
 use App\Models\Recurrence;
 use App\Models\Workspace;
-use Illuminate\Support\Carbon;
+use Carbon\CarbonInterface;
 
 final class AssistantSnapshot
 {
@@ -40,7 +40,7 @@ final class AssistantSnapshot
      *     today: string
      * }
      */
-    public static function for(Workspace $workspace, ?Carbon $now = null): array
+    public static function for(Workspace $workspace, ?CarbonInterface $now = null): array
     {
         $now ??= now();
         $stats = WorkspaceStatistics::for($workspace, $now->year, $now->month);
