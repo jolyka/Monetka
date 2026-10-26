@@ -12,14 +12,16 @@ final class AiChat
     /**
      * @param  array{provider: string, key: string, model: string, base_url: string}  $settings
      * @param  list<array{role: string, content: string}>  $messages
+     * @param  array{timeout?: int, max_tokens?: int}  $options
      * @return array{0: Response|null, 1: string|null}
      */
-    public static function send(array $settings, string $model, array $messages): array
+    public static function send(array $settings, string $model, array $messages, array $options = []): array
     {
         try {
+            $timeout = $options['timeout'] ?? ($settings['provider'] === 'ollama' ? 120 : 45);
             $request = Http::acceptJson()
                 ->connectTimeout(10)
-                ->timeout($settings['provider'] === 'ollama' ? 120 : 45);
+                ->timeout($timeout);
 
             if ($settings['key'] !== '') {
                 $request = $request->withToken($settings['key']);
@@ -37,6 +39,10 @@ final class AiChat
                 'messages' => $messages,
                 'temperature' => 0.2,
             ];
+
+            if (isset($options['max_tokens'])) {
+                $payload['max_tokens'] = $options['max_tokens'];
+            }
 
             if ($settings['provider'] === 'openrouter') {
                 $payload['provider'] = ['allow_fallbacks' => true];

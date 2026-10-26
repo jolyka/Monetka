@@ -51,7 +51,35 @@ it('stores one text recommendation and does not ask the model again the same day
     Http::assertSent(fn ($request): bool => str_contains($request['messages'][0]['content'], 'Тема — остатки')
         && str_contains($request['messages'][0]['content'], 'Не предлагай черновик')
         && ! str_contains($request['messages'][0]['content'], 'Тема — долги')
-        && ! str_contains($request['messages'][0]['content'], 'Тема — лимиты'));
+        && ! str_contains($request['messages'][0]['content'], 'Тема — лимиты')
+        && $request['max_tokens'] === 8192);
+});
+
+it('reports an empty model answer instead of saving it', function () {
+    config([
+        'services.ai.provider' => 'custom',
+        'services.ai.key' => 'test-key',
+        'services.ai.base_url' => 'https://gateway.example/v1/chat/completions',
+        'services.ai.model' => 'gemini-3.8-flash',
+        'services.openrouter.key' => null,
+    ]);
+
+    Http::fake([
+        'https://gateway.example/v1/chat/completions' => Http::response([
+            'choices' => [[
+                'message' => ['content' => null, 'reasoning_content' => 'Длинное рассуждение без ответа.'],
+            ]],
+        ]),
+    ]);
+
+    $user = User::factory()->create();
+    $workspace = (new CreateWorkspace)->execute($user, 'Семья', 'RUB');
+    (new CreateAccount)->execute($workspace, $user, ['name' => 'Карта', 'type' => 'checking', 'bank_id' => null, 'user_id' => null, 'opening_balance' => 2000]);
+    $generate = app(GenerateDailyRecommendation::class);
+
+    expect($generate->execute($workspace))->toBeNull()
+        ->and($generate->failure)->toBe('модель вернула пустой текст')
+        ->and(BudgetRecommendation::query()->count())->toBe(0);
 });
 
 it('does not ask about debts or limits when the workspace does not use them', function () {

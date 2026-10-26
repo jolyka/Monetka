@@ -14,8 +14,11 @@ use Illuminate\Support\Facades\Log;
 
 class GenerateDailyRecommendation
 {
+    public string $failure = '';
+
     public function execute(Workspace $workspace, ?CarbonInterface $now = null): ?BudgetRecommendation
     {
+        $this->failure = '';
         $now ??= now();
         $day = $now->toDateString();
         $existing = $workspace->budgetRecommendations()->whereDate('recommended_on', $day)->first();
@@ -27,10 +30,14 @@ class GenerateDailyRecommendation
         $settings = AiSettings::connection();
 
         if ($settings['base_url'] === '' || $settings['model'] === '') {
+            $this->failure = 'не заданы модель или адрес API';
+
             return null;
         }
 
         if ($settings['key'] === '' && AiSettings::requiresKey($settings['provider'])) {
+            $this->failure = 'нет ключа AI';
+
             return null;
         }
 
@@ -43,6 +50,8 @@ class GenerateDailyRecommendation
         $kind = RecommendationKind::choose($snapshot, $previous?->kind);
 
         if ($kind === null) {
+            $this->failure = 'в бюджете нет данных для совета';
+
             return null;
         }
         $messages = [
@@ -70,7 +79,8 @@ class GenerateDailyRecommendation
     private function reply(array $settings, array $messages): ?string
     {
         $model = $settings['model'];
-        [$response] = AiChat::send($settings, $model, $messages);
+        $options = ['timeout' => 180, 'max_tokens' => 8192];
+        [$response, $error] = AiChat::send($settings, $model, $messages, $options);
 
         if ($settings['provider'] === 'openrouter' && $response !== null && ! $response->successful() && in_array($response->status(), [404, 429], true) && $model !== 'openrouter/free') {
             Log::warning('OpenRouter primary model failed, falling back', [
@@ -79,28 +89,62 @@ class GenerateDailyRecommendation
                 'error' => $response->json('error.message'),
             ]);
 
-            [$response] = AiChat::send($settings, 'openrouter/free', $messages);
+            [$response, $error] = AiChat::send($settings, 'openrouter/free', $messages, $options);
         }
 
         if ($response === null || ! $response->successful()) {
+            $detail = $error ?? $response?->json('error.message') ?? $response?->body();
+            $this->failure = $this->failureText($response?->status(), $detail);
+
             Log::warning('Daily recommendation request failed', [
                 'provider' => $settings['provider'],
                 'status' => $response?->status(),
-                'error' => $response?->json('error.message') ?? $response?->body(),
+                'error' => $detail,
             ]);
 
             return null;
         }
 
-        $content = $response->json('choices.0.message.content');
+        $text = $this->contentText($response->json('choices.0.message.content'));
 
-        if (! is_string($content)) {
+        if ($text === '') {
+            $this->failure = 'модель вернула пустой текст';
+
             return null;
         }
 
-        $text = $this->plainText($content);
+        return $text;
+    }
 
-        return $text === '' ? null : $text;
+    private function failureText(?int $status, mixed $detail): string
+    {
+        $snippet = trim(preg_replace('/\s+/', ' ', mb_substr((string) $detail, 0, 300)) ?? '');
+        $prefix = $status === null ? 'нет ответа от провайдера' : "провайдер ответил HTTP {$status}";
+
+        return $snippet === '' ? $prefix : "{$prefix}: {$snippet}";
+    }
+
+    private function contentText(mixed $content): string
+    {
+        if (is_string($content)) {
+            return $this->plainText($content);
+        }
+
+        if (! is_array($content)) {
+            return '';
+        }
+
+        $parts = [];
+
+        foreach ($content as $part) {
+            if (is_string($part)) {
+                $parts[] = $part;
+            } elseif (is_array($part) && is_string($part['text'] ?? null)) {
+                $parts[] = $part['text'];
+            }
+        }
+
+        return $this->plainText(implode("\n", $parts));
     }
 
     private function plainText(string $content): string

@@ -27,12 +27,16 @@ class GenerateRecommendations extends Command
                     'workspace_id' => $workspace->id,
                     'error' => $exception->getMessage(),
                 ]);
+                $this->warn("{$workspace->name}: {$exception->getMessage()}");
 
                 return;
             }
 
             if ($recommendation?->wasRecentlyCreated) {
                 $created++;
+                $this->line("{$workspace->name}: записан совет «{$recommendation->kind->label()}».");
+            } elseif ($generate->failure !== '') {
+                $this->warn("{$workspace->name}: {$generate->failure}");
             }
         });
 
