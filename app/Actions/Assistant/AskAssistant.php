@@ -3,14 +3,13 @@
 namespace App\Actions\Assistant;
 
 use App\Models\Workspace;
+use App\Support\AiChat;
 use App\Support\AiSettings;
 use App\Support\AssistantDraft;
 use App\Support\AssistantPrompt;
 use App\Support\AssistantReplyGuard;
 use App\Support\AssistantSnapshot;
-use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
@@ -22,7 +21,7 @@ class AskAssistant
      */
     public function execute(Workspace $workspace, string $message, array $history = []): array
     {
-        $settings = $this->settings();
+        $settings = AiSettings::connection();
         $key = $settings['key'];
 
         if ($key === '' && AiSettings::requiresKey($settings['provider'])) {
@@ -109,45 +108,7 @@ class AskAssistant
      */
     private function complete(array $settings, string $model, array $messages): array
     {
-        try {
-            $request = Http::baseUrl($settings['base_url'])
-                ->acceptJson()
-                ->connectTimeout(10)
-                ->timeout($settings['provider'] === 'ollama' ? 120 : 45);
-
-            if ($settings['key'] !== '') {
-                $request = $request->withToken($settings['key']);
-            }
-
-            if ($settings['provider'] === 'openrouter') {
-                $request = $request->withHeaders([
-                    'HTTP-Referer' => (string) config('app.url'),
-                    'X-OpenRouter-Title' => 'Monetka',
-                ]);
-            }
-
-            $payload = [
-                'model' => $model,
-                'messages' => $messages,
-                'temperature' => 0.2,
-            ];
-
-            if ($settings['provider'] === 'openrouter') {
-                $payload['provider'] = ['allow_fallbacks' => true];
-            }
-
-            $response = $request->post('/chat/completions', $payload);
-
-            return [$response, null];
-        } catch (ConnectionException $exception) {
-            Log::warning('AI provider connection failed', [
-                'provider' => $settings['provider'],
-                'model' => $model,
-                'error' => $exception->getMessage(),
-            ]);
-
-            return [null, $exception->getMessage()];
-        }
+        return AiChat::send($settings, $model, $messages);
     }
 
     private function connectionMessage(?string $error, string $provider): string
@@ -203,32 +164,6 @@ class AskAssistant
             429 => "{$name} ограничил частоту запросов. Подождите минуту и спросите снова.",
             default => 'Модель не ответила. Попробуйте ещё раз через минуту.',
         };
-    }
-
-    /**
-     * @return array{provider: string, key: string, model: string, base_url: string}
-     */
-    private function settings(): array
-    {
-        $provider = (string) config('services.ai.provider', 'openrouter');
-        $aiKey = config('services.ai.key');
-        $legacyKey = config('services.openrouter.key');
-
-        if ($provider === 'openrouter' && (! is_string($aiKey) || $aiKey === '') && is_string($legacyKey) && $legacyKey !== '') {
-            return [
-                'provider' => 'openrouter',
-                'key' => $legacyKey,
-                'model' => (string) config('services.openrouter.model'),
-                'base_url' => rtrim((string) config('services.openrouter.base_url'), '/'),
-            ];
-        }
-
-        return [
-            'provider' => (string) config('services.ai.provider', 'openrouter'),
-            'key' => is_string($aiKey) ? $aiKey : '',
-            'model' => (string) config('services.ai.model'),
-            'base_url' => rtrim((string) config('services.ai.base_url'), '/'),
-        ];
     }
 
     /**

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, usePage } from '@inertiajs/vue3';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 
 type ExpensePoint = {
     date: string;
@@ -44,6 +44,13 @@ type RecurrenceRow = {
     next_occurred_on: string;
 };
 
+type RecommendationRow = {
+    kind: string;
+    label: string;
+    body: string;
+    date: string;
+};
+
 const {
     total,
     hasAccounts,
@@ -52,6 +59,7 @@ const {
     goals,
     debts,
     upcomingRecurrences,
+    recommendations,
 } = defineProps<{
     total: number;
     hasAccounts: boolean;
@@ -60,7 +68,38 @@ const {
     goals: GoalRow[];
     debts: DebtRow[];
     upcomingRecurrences: RecurrenceRow[];
+    recommendations: RecommendationRow[];
 }>();
+
+const recommendationOpen = ref(false);
+const selectedRecommendationDate = ref<string | null>(null);
+
+const latestRecommendation = computed(
+    () => recommendations.at(-1) ?? null,
+);
+
+const selectedRecommendation = computed(() => {
+    return (
+        recommendations.find(
+            (item) => item.date === selectedRecommendationDate.value,
+        ) ?? latestRecommendation.value
+    );
+});
+
+function toggleRecommendation(): void {
+    recommendationOpen.value = !recommendationOpen.value;
+
+    if (recommendationOpen.value) {
+        selectedRecommendationDate.value = latestRecommendation.value?.date ?? null;
+    }
+}
+
+function recommendationDay(date: string): string {
+    return new Intl.DateTimeFormat('ru-RU', {
+        day: 'numeric',
+        month: 'short',
+    }).format(new Date(`${date}T00:00:00`));
+}
 
 const page = usePage();
 const currency = computed(() => {
@@ -225,6 +264,57 @@ function typeLabel(type: RecurrenceRow['type']): string {
                         :points="linePoints"
                     />
                 </svg>
+            </div>
+        </section>
+
+        <section
+            v-if="latestRecommendation"
+            class="border-border rounded-xl border"
+        >
+            <button
+                type="button"
+                class="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
+                :aria-expanded="recommendationOpen"
+                @click="toggleRecommendation"
+            >
+                <span class="text-sm">
+                    <span class="text-muted-foreground">Рекомендация</span>
+                    <span aria-hidden="true"> · </span>
+                    {{ latestRecommendation.label }}
+                    <span class="text-muted-foreground">
+                        · {{ recommendationDay(latestRecommendation.date) }}
+                    </span>
+                </span>
+                <span class="text-muted-foreground shrink-0 text-xs">
+                    {{ recommendationOpen ? 'Скрыть' : 'Открыть' }}
+                </span>
+            </button>
+            <div
+                v-if="recommendationOpen && selectedRecommendation"
+                class="border-border space-y-3 border-t px-3 py-3"
+            >
+                <p class="text-sm leading-relaxed whitespace-pre-wrap">
+                    {{ selectedRecommendation.body }}
+                </p>
+                <div
+                    v-if="recommendations.length > 1"
+                    class="flex flex-wrap gap-1"
+                >
+                    <button
+                        v-for="item in recommendations"
+                        :key="item.date"
+                        type="button"
+                        class="rounded-full border px-2 py-0.5 text-xs"
+                        :class="
+                            item.date === selectedRecommendation.date
+                                ? 'border-foreground'
+                                : 'border-border text-muted-foreground'
+                        "
+                        @click="selectedRecommendationDate = item.date"
+                    >
+                        {{ item.label }} · {{ recommendationDay(item.date) }}
+                    </button>
+                </div>
             </div>
         </section>
 

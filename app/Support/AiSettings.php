@@ -56,6 +56,32 @@ final class AiSettings
         return self::providers()[$provider]['requires_key'] ?? true;
     }
 
+    /**
+     * @return array{provider: string, key: string, model: string, base_url: string}
+     */
+    public static function connection(): array
+    {
+        $provider = (string) config('services.ai.provider', 'openrouter');
+        $aiKey = config('services.ai.key');
+        $legacyKey = config('services.openrouter.key');
+
+        if ($provider === 'openrouter' && (! is_string($aiKey) || $aiKey === '') && is_string($legacyKey) && $legacyKey !== '') {
+            return [
+                'provider' => 'openrouter',
+                'key' => $legacyKey,
+                'model' => (string) config('services.openrouter.model'),
+                'base_url' => rtrim((string) config('services.openrouter.base_url'), '/'),
+            ];
+        }
+
+        return [
+            'provider' => $provider,
+            'key' => is_string($aiKey) ? $aiKey : '',
+            'model' => (string) config('services.ai.model'),
+            'base_url' => rtrim((string) config('services.ai.base_url'), '/'),
+        ];
+    }
+
     public function __construct(private readonly ?string $path = null) {}
 
     /**

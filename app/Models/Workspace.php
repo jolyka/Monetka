@@ -111,6 +111,14 @@ class Workspace extends Model
         return $this->hasMany(AssistantConversation::class);
     }
 
+    /**
+     * @return HasMany<BudgetRecommendation, $this>
+     */
+    public function budgetRecommendations(): HasMany
+    {
+        return $this->hasMany(BudgetRecommendation::class);
+    }
+
     public function roleFor(User $user): ?WorkspaceRole
     {
         $membership = $this->memberships()->where('user_id', $user->id)->first();

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Enums\TransactionType;
 use App\Models\Account;
+use App\Models\BudgetRecommendation;
 use App\Models\Category;
 use App\Models\CategoryLimit;
 use App\Models\Debt;
@@ -13,6 +14,7 @@ use App\Models\Transaction;
 use App\Models\Workspace;
 use App\Support\AccountBalance;
 use App\Support\LimitStatus;
+use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -46,6 +48,7 @@ class OverviewController extends Controller
                     ->orderBy('next_occurred_on')
                     ->get(),
             ),
+            'recommendations' => $this->recommendationPayloads($workspace, $now),
         ]);
     }
 
@@ -176,6 +179,28 @@ class OverviewController extends Controller
                 'amount' => $recurrence->amount,
                 'description' => $recurrence->description,
                 'next_occurred_on' => $recurrence->next_occurred_on->toDateString(),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return list<array{kind: string, label: string, body: string, date: string}>
+     */
+    private function recommendationPayloads(Workspace $workspace, CarbonInterface $now): array
+    {
+        $start = $now->copy()->startOfWeek(Carbon::MONDAY)->toDateString();
+        $end = $now->copy()->endOfWeek(Carbon::SUNDAY)->toDateString();
+
+        return $workspace->budgetRecommendations()
+            ->whereBetween('recommended_on', [$start, $end])
+            ->orderBy('recommended_on')
+            ->get()
+            ->map(fn (BudgetRecommendation $recommendation): array => [
+                'kind' => $recommendation->kind->value,
+                'label' => $recommendation->kind->label(),
+                'body' => $recommendation->body,
+                'date' => $recommendation->recommended_on->toDateString(),
             ])
             ->values()
             ->all();
