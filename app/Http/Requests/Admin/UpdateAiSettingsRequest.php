@@ -54,8 +54,8 @@ class UpdateAiSettingsRequest extends FormRequest
             'provider.required' => 'Выберите провайдера.',
             'model.required' => 'Укажите ID модели.',
             'model.regex' => 'ID модели не должен содержать пробелы.',
-            'base_url.required' => 'Укажите адрес API.',
-            'base_url.url' => 'Адрес API должен начинаться с http:// или https://.',
+            'base_url.required' => 'Укажите полный адрес эндпоинта.',
+            'base_url.url' => 'Адрес эндпоинта должен начинаться с http:// или https://.',
             'system_prompt.required' => 'Укажите системный промпт.',
             'system_prompt.max' => 'Промпт слишком длинный.',
         ];

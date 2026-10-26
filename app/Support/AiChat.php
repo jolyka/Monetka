@@ -17,8 +17,7 @@ final class AiChat
     public static function send(array $settings, string $model, array $messages): array
     {
         try {
-            $request = Http::baseUrl($settings['base_url'])
-                ->acceptJson()
+            $request = Http::acceptJson()
                 ->connectTimeout(10)
                 ->timeout($settings['provider'] === 'ollama' ? 120 : 45);
 
@@ -43,7 +42,7 @@ final class AiChat
                 $payload['provider'] = ['allow_fallbacks' => true];
             }
 
-            return [$request->post('/chat/completions', $payload), null];
+            return [$request->post(rtrim($settings['base_url'], '/'), $payload), null];
         } catch (ConnectionException $exception) {
             Log::warning('AI provider connection failed', [
                 'provider' => $settings['provider'],

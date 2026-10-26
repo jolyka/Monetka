@@ -265,15 +265,19 @@ function submit(): void {
                             <InputError :message="form.errors.model" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="base-url">Базовый URL API</Label>
+                            <Label for="base-url">Эндпоинт API</Label>
                             <Input
                                 id="base-url"
                                 v-model="form.base_url"
                                 name="base_url"
                                 type="url"
                                 required
-                                placeholder="https://api.example.com/v1"
+                                placeholder="https://api.example.com/v1/chat/completions"
                             />
+                            <p class="text-muted-foreground text-xs leading-5">
+                                Полный адрес запроса. К нему ничего не
+                                дописывается.
+                            </p>
                             <InputError :message="form.errors.base_url" />
                         </div>
                     </div>
@@ -360,7 +364,7 @@ function submit(): void {
                                 Endpoint
                             </p>
                             <p class="mt-1 font-mono text-xs break-all">
-                                {{ form.base_url || '—' }}/chat/completions
+                                {{ form.base_url || '—' }}
                             </p>
                         </div>
                         <div class="border-border border-t pt-4">

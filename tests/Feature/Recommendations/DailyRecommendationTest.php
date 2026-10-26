@@ -19,7 +19,7 @@ it('stores one text recommendation and does not ask the model again the same day
     config([
         'services.ai.provider' => 'openrouter',
         'services.ai.key' => 'test-key',
-        'services.ai.base_url' => 'https://openrouter.ai/api/v1',
+        'services.ai.base_url' => 'https://openrouter.ai/api/v1/chat/completions',
         'services.ai.model' => 'openrouter/free',
         'services.openrouter.key' => null,
     ]);
@@ -60,7 +60,7 @@ it('does not ask about debts or limits when the workspace does not use them', fu
     config([
         'services.ai.provider' => 'openrouter',
         'services.ai.key' => 'test-key',
-        'services.ai.base_url' => 'https://openrouter.ai/api/v1',
+        'services.ai.base_url' => 'https://openrouter.ai/api/v1/chat/completions',
         'services.ai.model' => 'openrouter/free',
         'services.openrouter.key' => null,
     ]);
@@ -95,7 +95,7 @@ it('does not call the model when the workspace has nothing to discuss', function
     config([
         'services.ai.provider' => 'openrouter',
         'services.ai.key' => 'test-key',
-        'services.ai.base_url' => 'https://openrouter.ai/api/v1',
+        'services.ai.base_url' => 'https://openrouter.ai/api/v1/chat/completions',
         'services.ai.model' => 'openrouter/free',
         'services.openrouter.key' => null,
     ]);
@@ -114,7 +114,7 @@ it('does not call the model when the provider key is missing', function () {
     config([
         'services.ai.provider' => 'openrouter',
         'services.ai.key' => '',
-        'services.ai.base_url' => 'https://openrouter.ai/api/v1',
+        'services.ai.base_url' => 'https://openrouter.ai/api/v1/chat/completions',
         'services.ai.model' => 'openrouter/free',
         'services.openrouter.key' => null,
     ]);
@@ -134,7 +134,7 @@ it('generates a recommendation per workspace and drops advice older than three w
     config([
         'services.ai.provider' => 'openrouter',
         'services.ai.key' => 'test-key',
-        'services.ai.base_url' => 'https://openrouter.ai/api/v1',
+        'services.ai.base_url' => 'https://openrouter.ai/api/v1/chat/completions',
         'services.ai.model' => 'openrouter/free',
         'services.openrouter.key' => null,
     ]);

@@ -17,11 +17,11 @@ beforeEach(function () {
         'services.ai.key' => null,
         'services.ai.provider' => 'openrouter',
         'services.ai.model' => 'qwen/qwen3.8-27b:free',
-        'services.ai.base_url' => 'https://openrouter.ai/api/v1',
+        'services.ai.base_url' => 'https://openrouter.ai/api/v1/chat/completions',
         'services.ai.system_prompt' => null,
         'services.openrouter.key' => null,
         'services.openrouter.model' => 'qwen/qwen3.8-27b:free',
-        'services.openrouter.base_url' => 'https://openrouter.ai/api/v1',
+        'services.openrouter.base_url' => 'https://openrouter.ai/api/v1/chat/completions',
     ]);
 });
 
@@ -108,7 +108,7 @@ it('puts the safety lock into every system prompt', function () {
 it('refuses prompt injections without calling the model', function () {
     config([
         'services.ai.key' => 'test-key',
-        'services.ai.base_url' => 'https://openrouter.ai/api/v1',
+        'services.ai.base_url' => 'https://openrouter.ai/api/v1/chat/completions',
         'services.ai.model' => 'openrouter/free',
     ]);
 
@@ -133,7 +133,7 @@ it('refuses prompt injections without calling the model', function () {
 it('refuses empty abuse without calling the model', function () {
     config([
         'services.ai.key' => 'test-key',
-        'services.ai.base_url' => 'https://openrouter.ai/api/v1',
+        'services.ai.base_url' => 'https://openrouter.ai/api/v1/chat/completions',
         'services.ai.model' => 'openrouter/free',
     ]);
 
@@ -154,7 +154,7 @@ it('refuses empty abuse without calling the model', function () {
 it('replaces unsafe model replies with a local refusal', function () {
     config([
         'services.ai.key' => 'test-key',
-        'services.ai.base_url' => 'https://openrouter.ai/api/v1',
+        'services.ai.base_url' => 'https://openrouter.ai/api/v1/chat/completions',
         'services.ai.model' => 'openrouter/free',
         'services.openrouter.key' => null,
     ]);
@@ -187,7 +187,7 @@ it('replaces unsafe model replies with a local refusal', function () {
 it('asks the model with the snapshot and does not write the journal', function () {
     config([
         'services.openrouter.key' => 'test-key',
-        'services.openrouter.base_url' => 'https://openrouter.ai/api/v1',
+        'services.openrouter.base_url' => 'https://openrouter.ai/api/v1/chat/completions',
         'services.openrouter.model' => 'qwen/qwen3.8-27b:free',
     ]);
 
@@ -243,7 +243,7 @@ it('asks the model with the snapshot and does not write the journal', function (
 it('persists a conversation and only returns it to its owner and workspace', function () {
     config([
         'services.openrouter.key' => 'test-key',
-        'services.openrouter.base_url' => 'https://openrouter.ai/api/v1',
+        'services.openrouter.base_url' => 'https://openrouter.ai/api/v1/chat/completions',
         'services.openrouter.model' => 'openrouter/free',
     ]);
 
@@ -284,7 +284,7 @@ it('routes assistant requests through the selected compatible aggregator', funct
     config([
         'services.ai.provider' => 'proxyapi',
         'services.ai.key' => 'proxy-key',
-        'services.ai.base_url' => 'https://api.proxyapi.ru/v1',
+        'services.ai.base_url' => 'https://api.proxyapi.ru/v1/chat/completions',
         'services.ai.model' => 'openai/gpt-5-mini',
         'services.openrouter.key' => null,
     ]);
@@ -319,7 +319,7 @@ it('routes assistant requests through the selected compatible aggregator', funct
 it('returns a draft without creating an expense', function () {
     config([
         'services.openrouter.key' => 'test-key',
-        'services.openrouter.base_url' => 'https://openrouter.ai/api/v1',
+        'services.openrouter.base_url' => 'https://openrouter.ai/api/v1/chat/completions',
     ]);
 
     Http::fake([
@@ -384,7 +384,7 @@ it('rejects chat without a key', function () {
 it('falls back to the free router when the primary model is rate limited', function () {
     config([
         'services.openrouter.key' => 'test-key',
-        'services.openrouter.base_url' => 'https://openrouter.ai/api/v1',
+        'services.openrouter.base_url' => 'https://openrouter.ai/api/v1/chat/completions',
         'services.openrouter.model' => 'qwen/qwen3.8-27b:free',
     ]);
 
@@ -419,7 +419,7 @@ it('falls back to the free router when the primary model is rate limited', funct
 it('explains a timeout instead of blaming the internet', function () {
     config([
         'services.openrouter.key' => 'test-key',
-        'services.openrouter.base_url' => 'https://openrouter.ai/api/v1',
+        'services.openrouter.base_url' => 'https://openrouter.ai/api/v1/chat/completions',
         'services.openrouter.model' => 'openrouter/free',
     ]);
 
@@ -442,7 +442,7 @@ it('explains a timeout instead of blaming the internet', function () {
 it('keeps the rate-limit message when the fallback model hangs', function () {
     config([
         'services.openrouter.key' => 'test-key',
-        'services.openrouter.base_url' => 'https://openrouter.ai/api/v1',
+        'services.openrouter.base_url' => 'https://openrouter.ai/api/v1/chat/completions',
         'services.openrouter.model' => 'qwen/qwen3.8-27b:free',
     ]);
 
@@ -499,7 +499,7 @@ it('returns an income draft without writing the journal', function () {
     config([
         'services.ai.key' => 'test-key',
         'services.ai.provider' => 'openrouter',
-        'services.ai.base_url' => 'https://openrouter.ai/api/v1',
+        'services.ai.base_url' => 'https://openrouter.ai/api/v1/chat/completions',
         'services.ai.model' => 'openrouter/free',
         'services.openrouter.key' => null,
     ]);
@@ -550,7 +550,7 @@ it('returns a category draft without creating the category', function () {
     config([
         'services.ai.key' => 'test-key',
         'services.ai.provider' => 'openrouter',
-        'services.ai.base_url' => 'https://openrouter.ai/api/v1',
+        'services.ai.base_url' => 'https://openrouter.ai/api/v1/chat/completions',
         'services.ai.model' => 'openrouter/free',
         'services.openrouter.key' => null,
     ]);
@@ -593,7 +593,7 @@ it('treats ollama as ready without an api key', function () {
         'services.ai.provider' => 'ollama',
         'services.ai.key' => null,
         'services.ai.model' => 'llama3.2',
-        'services.ai.base_url' => 'http://127.0.0.1:11434/v1',
+        'services.ai.base_url' => 'http://127.0.0.1:11434/v1/chat/completions',
         'services.openrouter.key' => 'leftover-openrouter-key',
     ]);
 
@@ -614,7 +614,7 @@ it('asks a local ollama server without an authorization header', function () {
         'services.ai.provider' => 'ollama',
         'services.ai.key' => null,
         'services.ai.model' => 'llama3.2',
-        'services.ai.base_url' => 'http://127.0.0.1:11434/v1',
+        'services.ai.base_url' => 'http://127.0.0.1:11434/v1/chat/completions',
         'services.openrouter.key' => 'leftover-openrouter-key',
     ]);
 
@@ -643,6 +643,39 @@ it('asks a local ollama server without an authorization header', function () {
         && ! $request->hasHeader('Authorization')
         && $request['model'] === 'llama3.2'
         && ! isset($request['provider']));
+});
+
+it('posts to the exact configured endpoint', function () {
+    config([
+        'services.ai.provider' => 'custom',
+        'services.ai.key' => 'test-key',
+        'services.ai.model' => 'local',
+        'services.ai.base_url' => 'https://gateway.example/api/v1/messages',
+        'services.openrouter.key' => null,
+    ]);
+
+    Http::fake([
+        'https://gateway.example/api/v1/messages' => Http::response([
+            'choices' => [[
+                'message' => [
+                    'content' => json_encode([
+                        'text' => 'Ответ со своего адреса.',
+                        'draft' => null,
+                    ], JSON_UNESCAPED_UNICODE),
+                ],
+            ]],
+        ]),
+    ]);
+
+    $user = User::factory()->create();
+    (new CreateWorkspace)->execute($user, 'Семья', 'RUB');
+
+    $this->actingAs($user)
+        ->postJson(route('assistant.store'), ['message' => 'Что с бюджетом?'])
+        ->assertOk()
+        ->assertJsonPath('text', 'Ответ со своего адреса.');
+
+    Http::assertSent(fn ($request) => $request->url() === 'https://gateway.example/api/v1/messages');
 });
 
 it('marks a recorded assistant draft so the button cannot be used again', function () {
