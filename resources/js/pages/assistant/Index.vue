@@ -2,6 +2,7 @@
 import { Head, usePage } from '@inertiajs/vue3';
 import { Mic } from '@lucide/vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import VoiceNote from '@/components/assistant/VoiceNote.vue';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 
@@ -653,14 +654,7 @@ async function recordDraft(index: number): Promise<void> {
                                 : 'bg-secondary text-foreground rounded-bl-md'
                         "
                     >
-                        <div v-if="message.audioUrl" class="bg-background rounded-xl p-2">
-                            <audio
-                                :src="message.audioUrl"
-                                controls
-                                preload="none"
-                                class="block h-10 w-64 max-w-full"
-                            />
-                        </div>
+                        <VoiceNote v-if="message.audioUrl" :src="message.audioUrl" />
                         <p
                             v-if="message.text"
                             :class="message.audioUrl ? 'mt-2 text-xs opacity-80' : ''"
