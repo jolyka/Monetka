@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, usePage } from '@inertiajs/vue3';
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { Mic } from '@lucide/vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 
@@ -127,6 +128,9 @@ const recordError = ref('');
 const recordErrorIndex = ref<number | null>(null);
 const messagesEl = ref<HTMLElement | null>(null);
 const chatEnd = ref<HTMLElement | null>(null);
+const speechSupported = ref(false);
+const listening = ref(false);
+const speechError = ref('');
 const prompts = [
     'Куда ушли деньги?',
     'кофе 350 с карты',
@@ -301,6 +305,99 @@ function formatConversationDate(value: string | null): string {
     return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short' }).format(new Date(value));
 }
 
+type SpeechResult = {
+    readonly isFinal: boolean;
+    readonly 0?: { readonly transcript: string };
+};
+
+type SpeechEvent = {
+    readonly results: ArrayLike<SpeechResult>;
+};
+
+type SpeechRecognizer = {
+    lang: string;
+    continuous: boolean;
+    interimResults: boolean;
+    onresult: ((event: SpeechEvent) => void) | null;
+    onerror: ((event: { error: string }) => void) | null;
+    onend: (() => void) | null;
+    start: () => void;
+    stop: () => void;
+};
+
+let recognition: SpeechRecognizer | null = null;
+let speechBase = '';
+
+function speechRecognizer(): (new () => SpeechRecognizer) | null {
+    if (typeof window === 'undefined') {
+        return null;
+    }
+
+    const host = window as Window & {
+        SpeechRecognition?: new () => SpeechRecognizer;
+        webkitSpeechRecognition?: new () => SpeechRecognizer;
+    };
+
+    return host.SpeechRecognition ?? host.webkitSpeechRecognition ?? null;
+}
+
+function toggleSpeech(): void {
+    if (listening.value) {
+        recognition?.stop();
+
+        return;
+    }
+
+    const Recognizer = speechRecognizer();
+
+    if (Recognizer === null) {
+        speechError.value = 'Этот браузер не умеет распознавать речь. Нужен Chrome.';
+
+        return;
+    }
+
+    speechError.value = '';
+    speechBase = input.value.trim();
+    const session = new Recognizer();
+    recognition = session;
+    session.lang = 'ru-RU';
+    session.continuous = false;
+    session.interimResults = true;
+    session.onresult = (event) => {
+        let said = '';
+
+        for (let index = 0; index < event.results.length; index++) {
+            said += event.results[index]?.[0]?.transcript ?? '';
+        }
+
+        const phrase = said.trim();
+        input.value = [speechBase, phrase].filter(Boolean).join(' ').slice(0, 1000);
+    };
+    session.onerror = (event) => {
+        listening.value = false;
+
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+            speechError.value = 'Нет доступа к микрофону.';
+        } else if (event.error === 'no-speech') {
+            speechError.value = 'Речь не услышана. Нажмите микрофон ещё раз.';
+        } else if (event.error !== 'aborted') {
+            speechError.value = 'Не удалось распознать речь.';
+        }
+    };
+    session.onend = () => {
+        listening.value = false;
+        recognition = null;
+    };
+
+    try {
+        session.start();
+        listening.value = true;
+    } catch {
+        speechError.value = 'Не удалось включить микрофон.';
+        listening.value = false;
+    }
+}
+
 function scrollChatToEnd(): void {
     nextTick(() => {
         requestAnimationFrame(() => {
@@ -313,7 +410,12 @@ function scrollChatToEnd(): void {
     });
 }
 
-onMounted(scrollChatToEnd);
+onMounted(() => {
+    scrollChatToEnd();
+    speechSupported.value = speechRecognizer() !== null;
+});
+
+onBeforeUnmount(() => recognition?.stop());
 
 watch(() => messages.value.length, scrollChatToEnd);
 
@@ -598,11 +700,31 @@ async function recordDraft(index: number): Promise<void> {
                         placeholder="Куда ушли деньги? / кофе 350 / цель отпуск 150000"
                         class="border-input bg-background ring-offset-background placeholder:text-muted-foreground h-10 flex-1 rounded-md border px-3 text-sm"
                     />
+                    <Button
+                        v-if="speechSupported"
+                        type="button"
+                        variant="outline"
+                        :disabled="!configured || sending"
+                        :aria-pressed="listening"
+                        :title="listening ? 'Остановить запись' : 'Сказать голосом'"
+                        @click="toggleSpeech"
+                    >
+                        <Mic
+                            class="size-4"
+                            :class="listening ? 'text-destructive' : ''"
+                        />
+                        <span class="sr-only">
+                            {{ listening ? 'Остановить запись' : 'Сказать голосом' }}
+                        </span>
+                    </Button>
                     <Button type="submit" :disabled="!configured || sending">
                         <Spinner v-if="sending" />
                         Спросить
                     </Button>
                 </form>
+                <p v-if="speechError" class="text-destructive text-xs">
+                    {{ speechError }}
+                </p>
             </footer>
         </section>
 
