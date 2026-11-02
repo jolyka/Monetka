@@ -73,6 +73,7 @@ type ChatMessage = {
     role: 'user' | 'assistant';
     text: string;
     draft?: Draft;
+    audioUrl?: string | null;
 };
 
 type Conversation = {
@@ -82,11 +83,12 @@ type Conversation = {
     messages_count: number;
 };
 
-const { snapshot, model, provider, configured, conversations, activeConversationId, activeMessages } = defineProps<{
+const { snapshot, model, provider, configured, speech, conversations, activeConversationId, activeMessages } = defineProps<{
     snapshot: Snapshot;
     model: string;
     provider: string;
     configured: boolean;
+    speech: boolean;
     conversations: Conversation[];
     activeConversationId: number | null;
     activeMessages: ChatMessage[];
@@ -128,8 +130,8 @@ const recordError = ref('');
 const recordErrorIndex = ref<number | null>(null);
 const messagesEl = ref<HTMLElement | null>(null);
 const chatEnd = ref<HTMLElement | null>(null);
-const speechSupported = ref(false);
 const listening = ref(false);
+const transcribing = ref(false);
 const speechError = ref('');
 const prompts = [
     'Куда ушли деньги?',
@@ -177,10 +179,12 @@ function xsrfToken(): string {
 }
 
 function historyPayload(): { role: 'user' | 'assistant'; content: string }[] {
-    return messages.value.map((message) => ({
-        role: message.role,
-        content: message.text,
-    }));
+    return messages.value
+        .filter((message) => message.text.trim() !== '')
+        .map((message) => ({
+            role: message.role,
+            content: message.text,
+        }));
 }
 
 async function ask(text?: string): Promise<void> {
@@ -305,96 +309,160 @@ function formatConversationDate(value: string | null): string {
     return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short' }).format(new Date(value));
 }
 
-type SpeechResult = {
-    readonly isFinal: boolean;
-    readonly 0?: { readonly transcript: string };
-};
+let recorder: MediaRecorder | null = null;
+let recorderStream: MediaStream | null = null;
+let speechChunks: Blob[] = [];
+let speechTimer = 0;
 
-type SpeechEvent = {
-    readonly results: ArrayLike<SpeechResult>;
-};
-
-type SpeechRecognizer = {
-    lang: string;
-    continuous: boolean;
-    interimResults: boolean;
-    onresult: ((event: SpeechEvent) => void) | null;
-    onerror: ((event: { error: string }) => void) | null;
-    onend: (() => void) | null;
-    start: () => void;
-    stop: () => void;
-};
-
-let recognition: SpeechRecognizer | null = null;
-let speechBase = '';
-
-function speechRecognizer(): (new () => SpeechRecognizer) | null {
-    if (typeof window === 'undefined') {
-        return null;
-    }
-
-    const host = window as Window & {
-        SpeechRecognition?: new () => SpeechRecognizer;
-        webkitSpeechRecognition?: new () => SpeechRecognizer;
-    };
-
-    return host.SpeechRecognition ?? host.webkitSpeechRecognition ?? null;
+function stopSpeechTracks(): void {
+    recorderStream?.getTracks().forEach((track) => track.stop());
+    recorderStream = null;
 }
 
-function toggleSpeech(): void {
-    if (listening.value) {
-        recognition?.stop();
+async function sendVoice(blob: Blob): Promise<void> {
+    if (blob.size === 0 || sending.value || !configured) {
+        speechError.value = 'Речь не услышана. Нажмите микрофон ещё раз.';
 
         return;
     }
 
-    const Recognizer = speechRecognizer();
+    const localUrl = URL.createObjectURL(blob);
+    const history = historyPayload();
+    messages.value.push({ role: 'user', text: '', audioUrl: localUrl });
+    transcribing.value = true;
+    sending.value = true;
+    speechError.value = '';
+    error.value = '';
 
-    if (Recognizer === null) {
-        speechError.value = 'Этот браузер не умеет распознавать речь. Нужен Chrome.';
+    try {
+        const extension = blob.type.includes('mp4') ? 'mp4' : blob.type.includes('ogg') ? 'ogg' : 'webm';
+        const body = new FormData();
+        body.append('audio', blob, `speech.${extension}`);
+        body.append('history', JSON.stringify(history));
+        if (currentConversationId.value) {
+            body.append('conversation_id', String(currentConversationId.value));
+        }
+
+        const response = await fetch('/assistant/voice', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                Accept: 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-XSRF-TOKEN': xsrfToken(),
+            },
+            body,
+        });
+        const data = (await response.json().catch(() => null)) as {
+            text?: string;
+            draft?: Draft | null;
+            conversation_id?: number;
+            message_id?: number;
+            user_message_id?: number;
+            transcript?: string;
+            audioUrl?: string;
+            message?: string;
+            errors?: { audio?: string[] };
+        } | null;
+
+        if (!response.ok || !data?.audioUrl) {
+            throw new Error(data?.errors?.audio?.[0] ?? data?.message ?? 'Не удалось распознать речь.');
+        }
+
+        const transcript = (data.transcript ?? '').trim();
+        messages.value[messages.value.length - 1] = {
+            id: data.user_message_id,
+            role: 'user',
+            text: transcript,
+            audioUrl: data.audioUrl,
+        };
+        URL.revokeObjectURL(localUrl);
+        messages.value.push({
+            id: data.message_id,
+            role: 'assistant',
+            text: data.text ?? '',
+            draft: data.draft ?? undefined,
+        });
+
+        if (data.conversation_id) {
+            currentConversationId.value = data.conversation_id;
+            const existing = conversationList.value.find(
+                (conversation) => conversation.id === data.conversation_id,
+            );
+            if (existing) {
+                existing.messages_count += 2;
+                existing.last_message_at = new Date().toISOString();
+            } else {
+                conversationList.value.unshift({
+                    id: data.conversation_id,
+                    title: transcript.slice(0, 120) || 'Голосовое',
+                    last_message_at: new Date().toISOString(),
+                    messages_count: 2,
+                });
+            }
+        }
+    } catch (caught) {
+        speechError.value = caught instanceof Error ? caught.message : 'Не удалось распознать речь.';
+    } finally {
+        transcribing.value = false;
+        sending.value = false;
+    }
+}
+
+async function toggleSpeech(): Promise<void> {
+    if (transcribing.value || sending.value) {
+        return;
+    }
+
+    if (listening.value) {
+        recorder?.stop();
+
+        return;
+    }
+
+    if (typeof MediaRecorder === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+        speechError.value = 'Этот браузер не умеет записывать звук.';
 
         return;
     }
 
     speechError.value = '';
-    speechBase = input.value.trim();
-    const session = new Recognizer();
-    recognition = session;
-    session.lang = 'ru-RU';
-    session.continuous = false;
-    session.interimResults = true;
-    session.onresult = (event) => {
-        let said = '';
-
-        for (let index = 0; index < event.results.length; index++) {
-            said += event.results[index]?.[0]?.transcript ?? '';
-        }
-
-        const phrase = said.trim();
-        input.value = [speechBase, phrase].filter(Boolean).join(' ').slice(0, 1000);
-    };
-    session.onerror = (event) => {
-        listening.value = false;
-
-        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-            speechError.value = 'Нет доступа к микрофону.';
-        } else if (event.error === 'no-speech') {
-            speechError.value = 'Речь не услышана. Нажмите микрофон ещё раз.';
-        } else if (event.error !== 'aborted') {
-            speechError.value = 'Не удалось распознать речь.';
-        }
-    };
-    session.onend = () => {
-        listening.value = false;
-        recognition = null;
-    };
 
     try {
+        recorderStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+            ? 'audio/webm;codecs=opus'
+            : '';
+        const session = mimeType === ''
+            ? new MediaRecorder(recorderStream)
+            : new MediaRecorder(recorderStream, { mimeType });
+        recorder = session;
+        speechChunks = [];
+        session.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+                speechChunks.push(event.data);
+            }
+        };
+        session.onstop = () => {
+            window.clearTimeout(speechTimer);
+            listening.value = false;
+            const blob = new Blob(speechChunks, { type: session.mimeType || 'audio/webm' });
+            speechChunks = [];
+            recorder = null;
+            stopSpeechTracks();
+            void sendVoice(blob);
+        };
         session.start();
         listening.value = true;
+        speechTimer = window.setTimeout(() => {
+            if (session.state === 'recording') {
+                session.stop();
+            }
+        }, 30000);
     } catch {
-        speechError.value = 'Не удалось включить микрофон.';
+        stopSpeechTracks();
         listening.value = false;
+        speechError.value = 'Нет доступа к микрофону.';
     }
 }
 
@@ -410,12 +478,17 @@ function scrollChatToEnd(): void {
     });
 }
 
-onMounted(() => {
-    scrollChatToEnd();
-    speechSupported.value = speechRecognizer() !== null;
-});
+onMounted(scrollChatToEnd);
 
-onBeforeUnmount(() => recognition?.stop());
+onBeforeUnmount(() => {
+    if (recorder?.state === 'recording') {
+        recorder.onstop = null;
+        recorder.stop();
+    }
+
+    window.clearTimeout(speechTimer);
+    stopSpeechTracks();
+});
 
 watch(() => messages.value.length, scrollChatToEnd);
 
@@ -426,7 +499,12 @@ function discardDraft(index: number): void {
         return;
     }
 
-    messages.value[index] = { role: message.role, text: message.text, id: message.id };
+    messages.value[index] = {
+        role: message.role,
+        text: message.text,
+        id: message.id,
+        audioUrl: message.audioUrl,
+    };
 }
 
 function draftAction(draft: Draft): DraftSubmit | null {
@@ -575,7 +653,23 @@ async function recordDraft(index: number): Promise<void> {
                                 : 'bg-secondary text-foreground rounded-bl-md'
                         "
                     >
-                        <p>{{ message.text }}</p>
+                        <div v-if="message.audioUrl" class="bg-background rounded-xl p-2">
+                            <audio
+                                :src="message.audioUrl"
+                                controls
+                                preload="none"
+                                class="block h-10 w-64 max-w-full"
+                            />
+                        </div>
+                        <p
+                            v-if="message.text"
+                            :class="message.audioUrl ? 'mt-2 text-xs opacity-80' : ''"
+                        >
+                            {{ message.text }}
+                        </p>
+                        <p v-else-if="message.audioUrl && transcribing" class="mt-2 text-xs opacity-80">
+                            Распознаю голосовое…
+                        </p>
                         <div
                             v-if="message.draft"
                             class="border-border/60 bg-background text-foreground mt-3 rounded-xl border px-3 py-3"
@@ -701,20 +795,22 @@ async function recordDraft(index: number): Promise<void> {
                         class="border-input bg-background ring-offset-background placeholder:text-muted-foreground h-10 flex-1 rounded-md border px-3 text-sm"
                     />
                     <Button
-                        v-if="speechSupported"
+                        v-if="speech"
                         type="button"
                         variant="outline"
-                        :disabled="!configured || sending"
+                        :disabled="!configured || sending || transcribing"
                         :aria-pressed="listening"
-                        :title="listening ? 'Остановить запись' : 'Сказать голосом'"
+                        :title="listening ? 'Остановить и отправить' : 'Голосовое сообщение'"
                         @click="toggleSpeech"
                     >
+                        <Spinner v-if="transcribing" />
                         <Mic
+                            v-else
                             class="size-4"
                             :class="listening ? 'text-destructive' : ''"
                         />
                         <span class="sr-only">
-                            {{ listening ? 'Остановить запись' : 'Сказать голосом' }}
+                            {{ listening ? 'Остановить и отправить' : 'Голосовое сообщение' }}
                         </span>
                     </Button>
                     <Button type="submit" :disabled="!configured || sending">

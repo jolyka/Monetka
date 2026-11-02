@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * @property int $id
@@ -18,6 +19,17 @@ use Illuminate\Support\Carbon;
 #[Fillable(['user_id', 'workspace_id', 'title', 'last_message_at'])]
 class AssistantConversation extends Model
 {
+    protected static function booted(): void
+    {
+        static::deleting(function (AssistantConversation $conversation): void {
+            $conversation->messages()->each(function (AssistantMessage $message): void {
+                if (is_string($message->audio_path) && $message->audio_path !== '') {
+                    Storage::disk('local')->delete($message->audio_path);
+                }
+            });
+        });
+    }
+
     /**
      * @return HasMany<AssistantMessage, $this>
      */

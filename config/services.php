@@ -47,6 +47,13 @@ return [
         'base_url' => env('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1/chat/completions'),
     ],
 
+    'whisper' => [
+        'binary' => env('WHISPER_BINARY', '/usr/local/bin/whisper-cli'),
+        'model' => env('WHISPER_MODEL', '/var/lib/whisper/ggml-small.bin'),
+        'ffmpeg' => env('WHISPER_FFMPEG', '/usr/bin/ffmpeg'),
+        'language' => env('WHISPER_LANGUAGE', 'ru'),
+    ],
+
     'ai' => [
         'provider' => env('AI_PROVIDER', 'openrouter'),
         'key' => env('AI_API_KEY', env('OPENROUTER_API_KEY')),

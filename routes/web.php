@@ -85,10 +85,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('assistant', [AssistantController::class, 'store'])
             ->middleware('throttle:20,1')
             ->name('assistant.store');
+        Route::post('assistant/transcribe', [AssistantController::class, 'transcribe'])
+            ->middleware('throttle:10,1')
+            ->name('assistant.transcribe');
         Route::get('assistant/conversations/{conversation}', [AssistantController::class, 'conversation'])
             ->name('assistant.conversations.show');
+        Route::post('assistant/voice', [AssistantController::class, 'voice'])
+            ->middleware('throttle:10,1')
+            ->name('assistant.voice');
         Route::post('assistant/messages/{message}/recorded', [AssistantController::class, 'recordDraft'])
             ->name('assistant.messages.recorded');
+        Route::get('assistant/messages/{message}/audio', [AssistantController::class, 'audio'])
+            ->name('assistant.messages.audio');
 
         Route::get('receipts', [ReceiptController::class, 'index'])->name('receipts.index');
         Route::post('receipts/connect', [ReceiptController::class, 'connect'])
