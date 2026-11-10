@@ -27,7 +27,7 @@ class GoalController extends Controller
         $workspace = $this->currentWorkspace($request);
         Gate::authorize('view', $workspace);
 
-        $goals = $workspace->goals()->orderBy('name')->get();
+        $goals = $workspace->goals()->withProgress()->orderBy('name')->get();
 
         return Inertia::render('goals/Index', [
             'goals' => $this->payloads($goals),

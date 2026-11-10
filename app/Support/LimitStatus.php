@@ -10,6 +10,31 @@ use Illuminate\Support\Carbon;
 final class LimitStatus
 {
     /**
+     * @return \Illuminate\Support\Collection<int, int>
+     */
+    public static function spendingByCategory(int $workspaceId, int $year, int $month): \Illuminate\Support\Collection
+    {
+        $from = Carbon::createFromDate($year, $month, 1)->startOfMonth();
+
+        return Transaction::query()
+            ->where('workspace_id', $workspaceId)
+            ->where('type', TransactionType::Expense)
+            ->whereBetween('occurred_on', [$from->toDateString(), $from->copy()->endOfMonth()->toDateString()])
+            ->whereNotNull('category_id')
+            ->selectRaw('category_id, SUM(amount) as spent')
+            ->groupBy('category_id')
+            ->pluck('spent', 'category_id');
+    }
+
+    /** @return array{spent: int, amount: int, exceeded: bool} */
+    public static function fromSpent(CategoryLimit $limit, int $spent): array
+    {
+        $amount = (int) $limit->amount;
+
+        return ['spent' => $spent, 'amount' => $amount, 'exceeded' => $spent > $amount];
+    }
+
+    /**
      * @return array{spent: int, amount: int, exceeded: bool}
      */
     public static function for(CategoryLimit $limit, int $year, int $month): array

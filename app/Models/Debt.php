@@ -44,8 +44,18 @@ class Debt extends Model
         return $this->hasMany(Transaction::class);
     }
 
+    /** @param \Illuminate\Database\Eloquent\Builder<self> $query */
+    public function scopeWithRepaid($query): void
+    {
+        $query->withSum(['transactions as repaid_sum' => fn ($q) => $q->where('type', TransactionType::DebtRepayment)], 'amount');
+    }
+
     public function remainder(): int
     {
+        if (array_key_exists('repaid_sum', $this->getAttributes())) {
+            return max(0, $this->original_amount - (int) $this->getAttribute('repaid_sum'));
+        }
+
         $repaid = (int) $this->transactions()
             ->where('type', TransactionType::DebtRepayment)
             ->sum('amount');

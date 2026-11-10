@@ -140,9 +140,7 @@ class AccountController extends Controller
             ->orderBy('name')
             ->get();
 
-        $balances = $accounts->mapWithKeys(
-            fn (Account $account): array => [$account->id => AccountBalance::for($account)],
-        );
+        $balances = AccountBalance::forWorkspace($workspace->id);
 
         $banks = $workspace->banks()->orderBy('name')->get();
 
@@ -216,8 +214,7 @@ class AccountController extends Controller
                 $query->where('account_id', $accountId)
                     ->orWhere('counterparty_account_id', $accountId);
             })
-            ->whereDate('occurred_on', '>=', $start->toDateString())
-            ->whereDate('occurred_on', '<=', $end->toDateString())
+            ->whereBetween('occurred_on', [$start->toDateString(), $end->toDateString()])
             ->orderByDesc('occurred_on')
             ->orderByDesc('id')
             ->get();

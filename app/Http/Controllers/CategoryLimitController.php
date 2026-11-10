@@ -37,7 +37,7 @@ class CategoryLimitController extends Controller
         return Inertia::render('limits/Index', [
             'year' => $year,
             'month' => $month,
-            'limits' => $this->payloads($limits, $year, $month),
+            'limits' => $this->payloads($limits, $workspace, $year, $month),
             'categories' => $workspace->categories()
                 ->where('kind', CategoryKind::Expense)
                 ->orderBy('name')
@@ -94,11 +94,13 @@ class CategoryLimitController extends Controller
      * @param  Collection<int, CategoryLimit>  $limits
      * @return array<int, array{id: int, category_id: int, category_name: string, category_emoji: string, category_color: string, amount: int, spent: int, exceeded: bool}>
      */
-    private function payloads(Collection $limits, int $year, int $month): array
+    private function payloads(Collection $limits, Workspace $workspace, int $year, int $month): array
     {
+        $spending = LimitStatus::spendingByCategory($workspace->id, $year, $month);
+
         return $limits
-            ->map(function (CategoryLimit $limit) use ($year, $month): array {
-                $status = LimitStatus::for($limit, $year, $month);
+            ->map(function (CategoryLimit $limit) use ($spending): array {
+                $status = LimitStatus::fromSpent($limit, (int) $spending->get($limit->category_id, 0));
                 $category = $limit->category;
 
                 if (! $category instanceof Category) {

@@ -49,18 +49,20 @@ final class AssistantSnapshot
             ->orderBy('name')
             ->get();
 
+        $balances = AccountBalance::forWorkspace($workspace->id);
+
         return [
             'today' => $now->toDateString(),
             'month' => $now->format('Y-m'),
             'month_label' => mb_ucfirst($now->locale('ru')->isoFormat('MMMM YYYY')),
             'currency' => $workspace->currency,
             'workspace_name' => $workspace->name,
-            'total_visible' => (int) $accounts->sum(fn (Account $account): int => AccountBalance::for($account)),
+            'total_visible' => (int) $accounts->sum(fn (Account $account): int => (int) $balances->get($account->id, 0)),
             'accounts' => $accounts
                 ->map(fn (Account $account): array => [
                     'id' => $account->id,
                     'name' => $account->name,
-                    'balance' => AccountBalance::for($account),
+                    'balance' => (int) $balances->get($account->id, 0),
                 ])
                 ->values()
                 ->all(),
@@ -78,6 +80,7 @@ final class AssistantSnapshot
             ),
             'limits' => self::limits($workspace, $now->year, $now->month),
             'goals' => $workspace->goals()
+                ->withProgress()
                 ->orderBy('name')
                 ->get()
                 ->map(fn (Goal $goal): array => [
@@ -89,6 +92,7 @@ final class AssistantSnapshot
                 ->values()
                 ->all(),
             'debts' => $workspace->debts()
+                ->withRepaid()
                 ->orderBy('counterparty_name')
                 ->get()
                 ->map(fn (Debt $debt): array => [
@@ -147,12 +151,14 @@ final class AssistantSnapshot
      */
     private static function limits(Workspace $workspace, int $year, int $month): array
     {
+        $spending = LimitStatus::spendingByCategory($workspace->id, $year, $month);
+
         return $workspace->categoryLimits()
             ->with('category')
             ->get()
             ->sortBy(fn (CategoryLimit $limit): string => $limit->category->name)
-            ->map(function (CategoryLimit $limit) use ($year, $month): array {
-                $status = LimitStatus::for($limit, $year, $month);
+            ->map(function (CategoryLimit $limit) use ($spending): array {
+                $status = LimitStatus::fromSpent($limit, (int) $spending->get($limit->category_id, 0));
                 $category = $limit->category;
 
                 if (! $category instanceof Category) {

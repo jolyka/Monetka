@@ -26,7 +26,7 @@ class DebtController extends Controller
         $workspace = $this->currentWorkspace($request);
         Gate::authorize('view', $workspace);
 
-        $debts = $workspace->debts()->orderBy('counterparty_name')->get();
+        $debts = $workspace->debts()->withRepaid()->orderBy('counterparty_name')->get();
 
         return Inertia::render('debts/Index', [
             'debts' => $this->payloads($debts),

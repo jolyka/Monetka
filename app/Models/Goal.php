@@ -43,8 +43,19 @@ class Goal extends Model
         return $this->hasMany(Transaction::class);
     }
 
+    /** @param \Illuminate\Database\Eloquent\Builder<self> $query */
+    public function scopeWithProgress($query): void
+    {
+        $query->withSum(['transactions as contribution_sum' => fn ($q) => $q->where('type', TransactionType::GoalContribution)], 'amount')
+            ->withSum(['transactions as withdrawal_sum' => fn ($q) => $q->where('type', TransactionType::GoalWithdrawal)], 'amount');
+    }
+
     public function progress(): int
     {
+        if (array_key_exists('contribution_sum', $this->getAttributes())) {
+            return (int) $this->getAttribute('contribution_sum') - (int) $this->getAttribute('withdrawal_sum');
+        }
+
         $contributions = (int) $this->transactions()
             ->where('type', TransactionType::GoalContribution)
             ->sum('amount');

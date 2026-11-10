@@ -35,13 +35,15 @@ class OverviewController extends Controller
             ->orderBy('name')
             ->get();
 
+        $balances = AccountBalance::forWorkspace($workspace->id);
+
         return Inertia::render('Overview', [
-            'total' => $this->total($accounts),
+            'total' => (int) $accounts->sum(fn (Account $account): int => $balances->get($account->id, 0)),
             'hasAccounts' => $accounts->isNotEmpty(),
             'expenseLine' => $this->expenseLine($workspace, $now),
             'limits' => $this->limitPayloads($workspace, $now->year, $now->month),
-            'goals' => $this->goalPayloads($workspace->goals()->orderBy('name')->get()),
-            'debts' => $this->debtPayloads($workspace->debts()->orderBy('counterparty_name')->get()),
+            'goals' => $this->goalPayloads($workspace->goals()->withProgress()->orderBy('name')->get()),
+            'debts' => $this->debtPayloads($workspace->debts()->withRepaid()->orderBy('counterparty_name')->get()),
             'upcomingRecurrences' => $this->recurrencePayloads(
                 $workspace->recurrences()
                     ->where('is_active', true)
@@ -50,14 +52,6 @@ class OverviewController extends Controller
             ),
             'recommendations' => $this->recommendationPayloads($workspace, $now),
         ]);
-    }
-
-    /**
-     * @param  Collection<int, Account>  $accounts
-     */
-    private function total(Collection $accounts): int
-    {
-        return (int) $accounts->sum(fn (Account $account): int => AccountBalance::for($account));
     }
 
     /**
@@ -104,9 +98,11 @@ class OverviewController extends Controller
             ->get()
             ->sortBy(fn (CategoryLimit $limit): string => $limit->category->name);
 
+        $spending = LimitStatus::spendingByCategory($workspace->id, $year, $month);
+
         return $limits
-            ->map(function (CategoryLimit $limit) use ($year, $month): array {
-                $status = LimitStatus::for($limit, $year, $month);
+            ->map(function (CategoryLimit $limit) use ($spending): array {
+                $status = LimitStatus::fromSpent($limit, (int) $spending->get($limit->category_id, 0));
                 $category = $limit->category;
 
                 if (! $category instanceof Category) {

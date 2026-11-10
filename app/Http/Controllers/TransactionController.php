@@ -152,8 +152,7 @@ class TransactionController extends Controller
             ->when($month !== 'all', function ($query) use ($month): void {
                 $start = Carbon::parse($month.'-01')->startOfMonth();
                 $end = $start->copy()->endOfMonth();
-                $query->whereDate('occurred_on', '>=', $start->toDateString())
-                    ->whereDate('occurred_on', '<=', $end->toDateString());
+                $query->whereBetween('occurred_on', [$start->toDateString(), $end->toDateString()]);
             })
             ->when($accountId, fn ($query) => $query->where(function ($accountQuery) use ($accountId): void {
                 $accountQuery->where('account_id', $accountId)

@@ -65,7 +65,9 @@ final class WorkspaceStatistics
             ->where('workspace_id', $workspace->id)
             ->whereIn('type', [TransactionType::Income, TransactionType::Expense])
             ->whereBetween('occurred_on', [$from->toDateString(), $to->toDateString()])
-            ->get(['type', 'amount', 'occurred_on']);
+            ->selectRaw('type, occurred_on, SUM(amount) as amount')
+            ->groupBy('type', 'occurred_on')
+            ->get();
 
         $totals = [];
 
