@@ -1,45 +1,56 @@
-# Laravel + Vue Starter Kit
+# Запуск Monetka на HandyHost
 
-## Introduction
+Инструкция для **нового пустого сайта** и компьютера с Windows. На хостинге понадобится только менеджер файлов, SSH не нужен.
 
-Our Vue starter kit provides a robust, modern starting point for building Laravel applications with a Vue frontend using [Inertia](https://inertiajs.com).
+## 1. Создайте хостинг
 
-Inertia allows you to build modern, single-page Vue applications using classic server-side routing and controllers. This lets you enjoy the frontend power of Vue combined with the incredible backend productivity of Laravel and lightning-fast Vite compilation.
+1. Откройте [HandyHost для Laravel](https://handyhost.ru/hosting/cms/laravel.html) и нажмите **«Попробовать»**.
+2. Выберите **Москва**, **тестовый домен**, **без автоустановки CMS** и **«Тестировать без оплаты»**. Укажите имя и почту.
+3. Войдите в панель хостинга ISPmanager по данным из письма HandyHost.
+4. Запишите свой тестовый адрес вида `u123456.test-handyhost.ru`.
 
-This Vue starter kit utilizes Vue 3 and the Composition API, TypeScript, Tailwind, and the [shadcn-vue](https://www.shadcn-vue.com) component library.
+Бесплатен только тестовый период. Его срок и условия подтверждения телефона проверьте при регистрации.
 
-## Official Documentation
+## 2. Подготовьте проект на компьютере
 
-Documentation for all Laravel starter kits can be found on the [Laravel website](https://laravel.com/docs/starter-kits).
+1. Установите [Laravel Herd](https://herd.laravel.com/windows) и [Node.js LTS](https://nodejs.org/en/download). В Herd выберите PHP **8.4.1 или новее**.
+2. Перезагрузите компьютер.
+3. Откройте папку Monetka и дважды нажмите **`prepare-handyhost.bat`**.
+4. Дождитесь сообщения **`Done. Follow README.html to upload the project.`**
 
-## Contributing
+Если появилась ошибка, пришлите её скриншот. Скрипт остановится, если найдёт существующие `.env` или базу данных, чтобы сохранить их.
 
-Thank you for considering contributing to our starter kit! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+## 3. Загрузите проект
 
-All contributions to the Starter Kits from now on should be made through [Maestro](https://github.com/laravel/maestro).
+1. В панели HandyHost откройте **«Менеджер файлов»**.
+2. Создайте в домашней папке аккаунта папку `monetka` **вне публичной папки сайта**. Если не знаете где, спросите поддержку.
+3. На компьютере откройте папку проекта и включите показ скрытых элементов в проводнике: **«Вид» → «Показать» → «Скрытые элементы»**.
+4. Создайте ZIP-архив содержимого папки проекта. Включите в него `.env`, `vendor`, `public/build`, `database/database.sqlite`, `storage`, `bootstrap/cache`, `artisan` и остальные файлы проекта. **Не включайте** папки `node_modules`, `.git` и файл `public/hot`.
+5. Загрузите ZIP в папку `monetka` кнопкой **«Закачать»** или **«Загрузить»** и распакуйте.
+6. Проверьте, что `artisan`, `.env`, `vendor` и `public` лежат сразу внутри `monetka`, без лишней вложенной папки. Затем удалите ZIP с хостинга: он содержит секретный ключ.
 
-## Code of Conduct
+## 4. Настройте сайт
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+1. В панели откройте **«WWW» → «WWW-домены»** и выберите для тестового домена **PHP 8.4**.
+2. Напишите в чат поддержки:
 
-## License
+   > Здравствуйте! Направьте мой тестовый домен на папку `public` проекта Monetka, который я загрузил в домашнюю папку. Файлы не удаляйте. Проверьте PHP 8.4.1 или новее, расширения `pdo_sqlite` и `sqlite3`, права записи в `storage`, `bootstrap/cache`, `database`.
 
-The Laravel + Vue starter kit is open-sourced software licensed under the MIT license.
+   Укажите им полный путь к папке `monetka` из менеджера файлов. **Не открывайте всю папку проекта для посетителей**: публичной должна быть только `monetka/public`.
+3. В менеджере файлов откройте `monetka/.env` и измените строки, подставив свой тестовый адрес:
 
-## Запуск на малом сервере
+   ```dotenv
+   APP_ENV=production
+   APP_DEBUG=false
+   APP_URL=http://u123456.test-handyhost.ru
+   ```
 
-Для сервера с 0,5 vCPU собирайте фронтенд и устанавливайте зависимости на машине сборки с той же платформой PHP, затем переносите готовые `vendor` и `public/build` вместе с приложением. Vite, `npm run dev` и `composer dev` на рабочем сервере не нужны. Укажите для веб-сервера корневой каталог `public`.
+4. Сохраните файл. `APP_KEY` и `DB_CONNECTION=sqlite` не меняйте.
+5. Откройте свой адрес с `http://` и зарегистрируйтесь. Для теста используйте вымышленные данные и новый пароль: HTTP не шифрует данные.
 
-В рабочем `.env` задайте `APP_ENV=production`, `APP_DEBUG=false`, действующий `APP_KEY` и адрес `APP_URL`. После установки зависимостей и настройки окружения выполните:
+## Если не работает
 
-```sh
-composer install --no-dev --prefer-dist --optimize-autoloader
-npm ci
-npm run build
-php artisan migrate --force
-php artisan optimize
-```
-
-Команды Composer и npm выполняются на машине сборки, если её используете; миграции и `optimize` — на сервере после настройки `.env`. После изменения конфигурации приложения обновляйте кеш командой `php artisan optimize`, а после изменения настроек окружения перезапускайте PHP-FPM. Включите OPcache для PHP-FPM. Для небольшого личного экземпляра начните с одного процесса PHP-FPM (`pm.max_children = 1`): параллельные запросы будут ожидать, зато процессы не размножатся. При достаточной памяти и необходимости параллельных запросов увеличьте число процессов. Настраивайте ограничение в 0,5 CPU на уровне хостинга или контейнера: код приложения сам по себе не ограничивает выделенные процессорные ресурсы.
-
-Планировщик рекомендаций необязателен для работы интерфейса. Если он нужен, добавьте обычный запуск `php artisan schedule:run` раз в минуту через cron. Локальные модели Ollama и whisper.cpp могут требовать значительно больше CPU и памяти; на слабом сервере используйте внешний AI API и не включайте локальную обработку голоса. Производительность зависит от размера базы, памяти, диска и числа пользователей; приведённая конфигурация не гарантирует конкретное время ответа.
+- **Ошибка 500:** откройте `monetka/storage/logs/laravel.log` в менеджере файлов и пришлите текст ошибки без паролей и ключей.
+- **Нет оформления:** проверьте, что подготовка на компьютере завершилась сообщением `Done` и папка `public/build` загружена.
+- **Подготовка не запускается:** пришлите скриншот окна скрипта. Не удаляйте `.env` или базу, если в них есть нужные данные.
+- **Заканчивается тест:** сохраните в безопасном месте копии `.env`, `database/database.sqlite` и нужных файлов `storage/app`. Перед копированием базы остановите запись в приложение.

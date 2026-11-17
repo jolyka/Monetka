@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Monetka — инструкция по запуску</title>
+<style>body{font:16px/1.65 system-ui,-apple-system,Segoe UI,sans-serif;color:#172033;background:#f4f6fa;margin:0}main{max-width:850px;margin:32px auto;padding:32px 40px;background:white;border-radius:14px;box-shadow:0 4px 24px #19273b12}h1,h2{line-height:1.25}h2{margin-top:2em;border-bottom:1px solid #e3e8ef;padding-bottom:.35em}a{color:#1254aa}pre{background:#172033;color:#f2f5fa;padding:16px;border-radius:8px;overflow:auto;line-height:1.45}code{font-family:ui-monospace,Consolas,monospace}p code,li code{background:#eef1f6;padding:2px 5px;border-radius:4px}li{margin:.4em 0}@media(max-width:600px){main{margin:0;padding:20px;border-radius:0}body{background:white}}</style></head><body><main>
+<h1>Запуск Monetka на HandyHost</h1>
+<p>Инструкция для <strong>нового пустого сайта</strong> и компьютера с Windows. На хостинге понадобится только менеджер файлов, SSH не нужен.</p>
+<h2>1. Создайте хостинг</h2>
+<ol>
+<li>Откройте <a href="https://handyhost.ru/hosting/cms/laravel.html">HandyHost для Laravel</a> и нажмите <strong>«Попробовать»</strong>.</li>
+<li>Выберите <strong>Москва</strong>, <strong>тестовый домен</strong>, <strong>без автоустановки CMS</strong> и <strong>«Тестировать без оплаты»</strong>. Укажите имя и почту.</li>
+<li>Войдите в панель хостинга ISPmanager по данным из письма HandyHost.</li>
+<li>Запишите свой тестовый адрес вида <code>u123456.test-handyhost.ru</code>.</li>
+</ol>
+<p>Бесплатен только тестовый период. Его срок и условия подтверждения телефона проверьте при регистрации.</p>
+<h2>2. Подготовьте проект на компьютере</h2>
+<ol>
+<li>Установите <a href="https://herd.laravel.com/windows">Laravel Herd</a> и <a href="https://nodejs.org/en/download">Node.js LTS</a>. В Herd выберите PHP <strong>8.4.1 или новее</strong>.</li>
+<li>Перезагрузите компьютер.</li>
+<li>Откройте папку Monetka и дважды нажмите <strong><code>prepare-handyhost.bat</code></strong>.</li>
+<li>Дождитесь сообщения <strong><code>Done. Follow README.html to upload the project.</code></strong></li>
+</ol>
+<p>Если появилась ошибка, пришлите её скриншот. Скрипт остановится, если найдёт существующие <code>.env</code> или базу данных, чтобы сохранить их.</p>
+<h2>3. Загрузите проект</h2>
+<ol>
+<li>В панели HandyHost откройте <strong>«Менеджер файлов»</strong>.</li>
+<li>Создайте в домашней папке аккаунта папку <code>monetka</code> <strong>вне публичной папки сайта</strong>. Если не знаете где, спросите поддержку.</li>
+<li>На компьютере откройте папку проекта и включите показ скрытых элементов в проводнике: <strong>«Вид» → «Показать» → «Скрытые элементы»</strong>.</li>
+<li>Создайте ZIP-архив содержимого папки проекта. Включите в него <code>.env</code>, <code>vendor</code>, <code>public/build</code>, <code>database/database.sqlite</code>, <code>storage</code>, <code>bootstrap/cache</code>, <code>artisan</code> и остальные файлы проекта. <strong>Не включайте</strong> папки <code>node_modules</code>, <code>.git</code> и файл <code>public/hot</code>.</li>
+<li>Загрузите ZIP в папку <code>monetka</code> кнопкой <strong>«Закачать»</strong> и распакуйте.</li>
+<li>Проверьте, что <code>artisan</code>, <code>.env</code>, <code>vendor</code> и <code>public</code> лежат сразу внутри <code>monetka</code>, без лишней вложенной папки. Затем удалите ZIP с хостинга: он содержит секретный ключ.</li>
+</ol>
+<h2>4. Настройте сайт</h2>
+<ol>
+<li>В панели откройте <strong>«WWW» → «WWW-домены»</strong> и выберите для тестового домена <strong>PHP 8.4</strong>.</li>
+<li>Напишите в чат поддержки:</li>
+<p>&gt; Здравствуйте! Направьте мой тестовый домен на папку <code>public</code> проекта Monetka, который я загрузил в домашнюю папку. Файлы не удаляйте. Проверьте PHP 8.4.1 или новее, расширения <code>pdo_sqlite</code> и <code>sqlite3</code>, права записи в <code>storage</code>, <code>bootstrap/cache</code>, <code>database</code>.</p>
+<p>Укажите им полный путь к папке <code>monetka</code> из менеджера файлов. <strong>Не открывайте всю папку проекта для посетителей</strong>: публичной должна быть только <code>monetka/public</code>.</p>
+<li>В менеджере файлов откройте <code>monetka/.env</code> и измените строки, подставив свой тестовый адрес:</li>
+<pre><code>   APP_ENV=production
+   APP_DEBUG=false
+   APP_URL=http://u123456.test-handyhost.ru</code></pre>
+<li>Сохраните файл. <code>APP_KEY</code> и <code>DB_CONNECTION=sqlite</code> не меняйте.</li>
+<li>Откройте свой адрес с <code>http://</code> и зарегистрируйтесь. Для теста используйте вымышленные данные и новый пароль: HTTP не шифрует данные.</li>
+</ol>
+<h2>Если не работает</h2>
+<ul>
+<li><strong>Ошибка 500:</strong> откройте <code>monetka/storage/logs/laravel.log</code> в менеджере файлов и пришлите текст ошибки без паролей и ключей.</li>
+<li><strong>Нет оформления:</strong> проверьте, что подготовка на компьютере завершилась сообщением <code>Done</code> и папка <code>public/build</code> загружена.</li>
+<li><strong>Подготовка не запускается:</strong> пришлите скриншот окна скрипта. Не удаляйте <code>.env</code> или базу, если в них есть нужные данные.</li>
+<li><strong>Заканчивается тест:</strong> сохраните в безопасном месте копии <code>.env</code>, <code>database/database.sqlite</code> и нужных файлов <code>storage/app</code>. Перед копированием базы остановите запись в приложение.</li>
+</ul>
+</main></body></html>
